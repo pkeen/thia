@@ -1,0 +1,21 @@
+{
+	"compilerOptions": {
+		"rootDir": "./src",
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "node",
+		"declaration": true,
+		"declarationMap": true,
+		"declarationDir": "./dist",
+		"jsx": "react-jsx",
+		"strict": false,
+		"esModuleInterop": true,
+		"baseUrl": "./src",
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"noEmitOnError": false,
+		"sourceMap": true
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "**/node_modules/*"]
+}
