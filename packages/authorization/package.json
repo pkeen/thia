@@ -1,0 +1,38 @@
+{
+	"name": "@pete_keen/authz",
+	"version": "0.0.1",
+	"main": "dist/index.mjs",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs",
+			"types": "./dist/index.d.ts"
+		},
+		"./adapters": {
+			"import": "./dist/adapters/index.mjs",
+			"default": "./dist/adapters/index.mjs",
+			"types": "./dist/adapters/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "rollup -c",
+		"dev": "rollup -c -w",
+		"test": "jest"
+	},
+	"dependencies": {
+		"zod": "^3.0.0"
+	},
+	"peerDependencies": {
+		"drizzle-orm": "^0.36.3",
+		"typescript": "^5.0.0"
+	},
+	"devDependencies": {
+		"@rollup/plugin-commonjs": "^28.0.1",
+		"@rollup/plugin-multi-entry": "^6.0.1",
+		"@rollup/plugin-node-resolve": "^15.3.0",
+		"@rollup/plugin-typescript": "^12.1.1",
+		"rollup": "^4.36.0"
+	}
+}

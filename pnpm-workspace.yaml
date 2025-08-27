@@ -1,0 +1,5 @@
+packages:
+    - "apps/**"
+    - "packages/**"
+    # - "packages/*/packages/**" # catches inner monorepos such as auth/packages/*
+

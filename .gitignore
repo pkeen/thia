@@ -1,0 +1,54 @@
+# Node.js
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.swp
+*.lock
+
+# System files
+.DS_Store
+Thumbs.db
+
+# PNPM specific
+.pnp/
+.pnp.js
+.pnpm-debug.log
+.npmrc
+
+# Next.js specific
+.next/
+out/
+
+# VSCode
+.vscode/
+
+# IntelliJ
+.idea/
+
+# OS Specific
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Bit-specific (if using it alongside)
+.bit/
+
+# React Router Types
+.react-router/
+
+# pnpm cache
+.pnpm/
