@@ -11,13 +11,6 @@
 		"typescript": "^5.0.0",
 		"eslint": "^8.0.0"
 	},
-	"pnpm": {
-		"peerDependencyRules": {
-			"allowAny": [
-				"typescript"
-			]
-		}
-	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC"
