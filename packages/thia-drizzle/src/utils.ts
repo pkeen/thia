@@ -10,7 +10,7 @@ import { DefaultPostgresSchema } from "./pg";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
 // import { DefaultSQLiteSchema } from "./sqlite.js";
 
-type AnyPostgresDatabase = PgDatabase<PgQueryResultHKT, any> | NeonHttpDatabase;
+type AnyPostgresDatabase = PgDatabase<PgQueryResultHKT> | NeonHttpDatabase;
 type AnyMySqlDatabase = MySqlDatabase<
 	MySqlQueryResultHKT,
 	PreparedQueryHKTBase,

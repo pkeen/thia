@@ -1,4 +1,4 @@
-import { UserPublic } from "../types";
+import { UserPublic } from "../../../entities/user";
 import { SignupCredentials } from "../providers/credentials/index.types";
 /**
  * WARNING: This module takes heavy influence from next auth.
@@ -11,28 +11,28 @@ import { SignupCredentials } from "../providers/credentials/index.types";
  * using the information (profile data) returned by the identity provider.
  * A corresponding account is also created and linked to the user.
  */
-export interface AdapterUser extends UserPublic {
-	/** A unique identifier for the user. */
-	id: string;
-	/** The user's email address. */
-	email: string;
-	/**
-	 * Whether the user has verified their email address via an [Email provider](https://authjs.dev/getting-started/authentication/email).
-	 * It is `null` if the user has not signed in with the Email provider yet, or the date of the first successful signin.
-	 */
-	emailVerified: Date | null;
+// export interface AdapterUser extends UserPublic {
+// 	/** A unique identifier for the user. */
+// 	id: string;
+// 	/** The user's email address. */
+// 	email: string;
+// 	/**
+// 	 * Whether the user has verified their email address via an [Email provider](https://authjs.dev/getting-started/authentication/email).
+// 	 * It is `null` if the user has not signed in with the Email provider yet, or the date of the first successful signin.
+// 	 */
+// 	emailVerified: Date | null;
 
-	/*
-	 * TBD if image is required
-	 */
-	// image?: string | null;
-	// /**
-	//  * Password - this may be used for credential based sign in only - for now thats the only way
-	//  * Should be optional
-	//  * Or COMPLETELY UNUSED
-	//  */
-	// password?: string;
-}
+// 	/*
+// 	 * TBD if image is required
+// 	 */
+// 	// image?: string | null;
+// 	// /**
+// 	//  * Password - this may be used for credential based sign in only - for now thats the only way
+// 	//  * Should be optional
+// 	//  * Or COMPLETELY UNUSED
+// 	//  */
+// 	// password?: string;
+// }
 
 export interface CreateUser {
 	email: string;
