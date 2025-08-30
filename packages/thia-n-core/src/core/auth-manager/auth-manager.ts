@@ -61,7 +61,7 @@ export function AuthManager<Extra>(
 				} else if (signInResult.type === "redirect") {
 					logger.info("Redirecting to external provider", {
 						provider,
-					});
+					}); // There will be no redirect this is adapter layer stuff
 					return {
 						type: "redirect",
 						url: signInResult.url,
