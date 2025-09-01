@@ -1,10 +1,15 @@
+import { Keycard } from "entities";
+import { AuthResult, AuthState } from "../presentation/auth-response";
+import { AuthNCallbacks } from "application/ports/callbacks";
+import { DisplayProvider } from "application/presentation/display-provider";
+
 // --- Auth Manager Interface ---
 export interface IAuthManager<Extra = {}> {
-    login: (params: SignInParams) => Promise<AuthResult<Extra>>;
-    validate: (keyCards: KeyCards) => Promise<AuthResult<Extra>>;
-    signOut: (
-        keyCards: KeyCards | null | undefined
-    ) => Promise<AuthState<Extra>>;
-    listProviders: () => DisplayProvider[];
-    callbacks: AuthNCallbacks<Extra>; // ✅ expose it here
+	login: (params: SignInParams) => Promise<AuthResult<Extra>>;
+	validate: (keyCards: Keycard[]) => Promise<AuthResult<Extra>>;
+	signOut: (
+		keyCards: Keycard[] | null | undefined
+	) => Promise<AuthState<Extra>>;
+	listProviders: () => DisplayProvider[];
+	callbacks: AuthNCallbacks<Extra>; // ✅ expose it here
 }
