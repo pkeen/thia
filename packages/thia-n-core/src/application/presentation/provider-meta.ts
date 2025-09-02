@@ -1,4 +1,4 @@
-export type DisplayProvider = {
+export type ProviderMeta = {
 	name: string;
 	key: string;
 	style: {

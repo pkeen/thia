@@ -1,7 +1,7 @@
 import { Keycard } from "entities";
 import { AuthResult, AuthState } from "../presentation/auth-response";
 import { AuthNCallbacks } from "application/ports/callbacks";
-import { DisplayProvider } from "application/presentation/display-provider";
+import { DisplayProvider } from "application/presentation/provider-meta";
 
 // --- Auth Manager Interface ---
 export interface IAuthManager<Extra = {}> {

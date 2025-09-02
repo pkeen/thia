@@ -7,6 +7,7 @@ import {
 // import { AdapterAccount } from "./adapter";
 import { Account } from "entities";
 import { AuthProvider } from "./oauth";
+import { ProviderMeta } from "application/presentation/provider-meta";
 
 export interface UserAccountProfile {
 	accountId: string;
@@ -105,7 +106,51 @@ export const SignInSystem = (providers: Providers) => {
 	};
 };
 
-export interface SignInSystem {
+export interface IndentityProvider {
 	// oAuthSignIn(provider?: string, code?: string): Promise<SignInResult>;
 	signIn(provider?: string, code?: string): Promise<SignInResult>;
+}
+
+// stable contract the use-case depends on
+export type IdentityAssertion = {
+	profile: { email: string; name?: string; avatarUrl?: string };
+	account?: { provider: string; providerAccountId: string };
+};
+
+export type ProviderError =
+	| "PROVIDER_NOT_GIVEN"
+	| "PROVIDER_NOT_FOUND"
+	| "OAUTH_ERROR"
+	| "CREDENTIALS_INVALID"
+	| "TOKEN_INVALID"
+	| "UNKNOWN";
+
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+export interface IdentityProviderPort {
+	beginOAuth(
+		provider: string
+	): Promise<
+		Result<
+			{ url: string; state?: string; codeVerifier?: string },
+			{ code: string; message?: string }
+		>
+	>;
+	completeOAuth(
+		provider: string,
+		code: string
+	): Promise<Result<IdentityAssertion, ProviderError>>;
+
+	listProviders(): ProviderMeta[]; // this is for dynamic ui
+	// Optional
+	signInWithCredentials(creds: {
+		email: string;
+		password: string;
+	}): Promise<Result<IdentityAssertion, ProviderError>>;
+	verifyMagicLink(
+		token: string
+	): Promise<Result<IdentityAssertion, ProviderError>>;
+	verifyApiToken(
+		token: string
+	): Promise<Result<IdentityAssertion, ProviderError>>;
 }

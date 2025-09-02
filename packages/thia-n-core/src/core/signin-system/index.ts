@@ -102,4 +102,5 @@ export const SignInSystem = (providers: Providers) => {
 export interface SignInSystem {
 	// oAuthSignIn(provider?: string, code?: string): Promise<SignInResult>;
 	signIn(provider?: string, code?: string): Promise<SignInResult>;
+    // createAuthorizationUrl()
 }
