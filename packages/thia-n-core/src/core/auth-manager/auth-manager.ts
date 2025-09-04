@@ -8,13 +8,14 @@ import {
 	UserPublic as User,
 } from "../types";
 import { AuthProvider } from "../providers";
-import { Adapter } from "../adapter";
+// import { Adapter } from "../adapter";
+import { AuthRepo } from "application/ports/user-repo/user-repo";
 import { IAuthManager, AuthNCallbacks } from "./types";
 import { SignInSystem, type SignInParams } from "../signin-system";
 import { KeyCardMissingError, UserNotFoundError } from "core/error";
 
 export function AuthManager<Extra>(
-	userRegistry: Adapter,
+	userRegistry: AuthRepo,
 	authStrategy: AuthStrategy,
 	providers: AuthProvider[],
 	logger: Logger,
@@ -95,9 +96,8 @@ export function AuthManager<Extra>(
 
 				const publicUser = sanitizeUser(user);
 				const enrichedUser = await enrichUser(publicUser);
-				const keyCards = await authStrategy.createKeyCards(
-					enrichedUser
-				);
+				const keyCards =
+					await authStrategy.createKeyCards(enrichedUser);
 
 				return {
 					type: "success",
@@ -145,9 +145,8 @@ export function AuthManager<Extra>(
 
 				const publicUser = sanitizeUser(dbUser);
 				const enrichedUser = await enrichUser(publicUser);
-				const keyCards = await authStrategy.createKeyCards(
-					enrichedUser
-				);
+				const keyCards =
+					await authStrategy.createKeyCards(enrichedUser);
 
 				return {
 					type: "refresh",

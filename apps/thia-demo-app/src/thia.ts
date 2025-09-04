@@ -4,16 +4,17 @@ import {
 	Zoom,
 	Microsoft,
 	Facebook,
+	GitHub,
 	LinkedIn,
-} from "@pete_keen/thia-n-core/providers";
+} from "@pete_keen/thia-n-core/adapters";
 import { DrizzleAdapter } from "@pete_keen/thia-n-core/adapters";
 import db from "@/db";
 // import { authz } from "./authz";
-import Thia from "@pete_keen/thia-next";
+// import Thia from "@pete_keen/thia-next";
 
 export const userRegistry = DrizzleAdapter(db);
 
-export const { thia, handlers } = Thia({
+export const thia = createAuthManager({
 	strategy: "jwt",
 	jwtConfig: {
 		access: {
@@ -31,39 +32,41 @@ export const { thia, handlers } = Thia({
 			fields: ["id"],
 		},
 	},
-	secret: "adafdsfsd",
-	adapter: userRegistry,
+	adapter: DrizzleAdapter(db),
 	providers: [
+		new GitHub({
+			clientId: process.env.GITHUB_CLIENT_ID!,
+			clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+			redirectUri: process.env.GITHUB_REDIRECT_URI!,
+		}),
+
 		new Zoom({
 			clientId: process.env.ZOOM_CLIENT_ID!,
 			clientSecret: process.env.ZOOM_CLIENT_SECRET!,
 			redirectUri: process.env.ZOOM_REDIRECT_URI!,
 		}),
+
 		new Google({
 			clientId: process.env.GOOGLE_CLIENT_ID!,
 			clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-			redirectUri: process.env.GOOGLE_REDIRECT_URI!,
+			redirectUri: "http://localhost:5173/auth/redirect/google",
 		}),
+
 		new Microsoft({
 			clientId: process.env.MICROSOFT_CLIENT_ID!,
 			clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
-			redirectUri: process.env.MICROSOFT_REDIRECT_URI!,
+			redirectUri: "http://localhost:5173/auth/redirect/microsoft",
 		}),
+
 		new Facebook({
 			clientId: process.env.FACEBOOK_CLIENT_ID!,
 			clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
-			redirectUri: process.env.FACEBOOK_REDIRECT_URI!,
+			redirectUri: "http://localhost:5173/auth/redirect/facebook",
 		}),
-		// new LinkedIn({
-		// 	clientId: process.env.LINKEDIN_CLIENT_ID!,
-		// 	clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
-		// 	redirectUri: process.env.LINKEDIN_REDIRECT_URI!,
-		// }),
-		// Will leave this for now until creating a B27 linkedIn Page
 	],
 	loggerOptions: {
 		level: "debug",
-		prefix: "Thia",
+		prefix: "Auth",
 	},
 	// callbacks: {
 	// 	augmentUserData: authz.getAuthzData,
@@ -71,26 +74,4 @@ export const { thia, handlers } = Thia({
 	// 	onUserUpdated: authz.onUserDeleted,
 	// 	onUserDeleted: authz.onUserDeleted,
 	// },
-	middleware: {
-		publicRoutes: [
-			{ pattern: "/", match: "exact" },
-			{ pattern: "/about", match: "exact" },
-			{ pattern: "/api/thia/signin", match: "exact" },
-			{ pattern: "/api/thia/signup", match: "exact" },
-			{ pattern: "/api/public/*", match: "prefix" },
-			{ pattern: "/static/**", match: "wildcard" },
-		],
-	},
 });
-
-export type ThiaUser = Awaited<ReturnType<typeof thia>>;
-
-// // Now extract the user from thia
-// export type AuthUser = NoArgsReturnType<typeof thia>;
-
-// // Helper type: Extract return type of no-args overload
-// type NoArgsReturnType<T> = T extends {
-// 	(): Promise<infer R>;
-// }
-// 	? R
-// 	: never;
