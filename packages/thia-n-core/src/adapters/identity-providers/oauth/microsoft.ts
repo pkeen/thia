@@ -4,7 +4,7 @@ import {
 	OIDCBaseTokenSchema,
 	BaseTokenSchema,
 	OAuthProviderResponse,
-} from "./oauth-provider";
+} from "./base";
 import { z } from "zod";
 import { UserAccountProfile } from "core/types";
 import { AdapterAccount } from "core/adapter";

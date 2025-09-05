@@ -4,4 +4,4 @@ export * from "./google";
 export * from "./microsoft";
 export * from "./facebook";
 export * from "./linkedin";
-export * from "./oauth-provider";
+export * from "./base";

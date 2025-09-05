@@ -20,7 +20,7 @@ export type BaseToken = z.infer<typeof BaseTokenSchema>;
 export abstract class AbstractBaseOAuthProvider<
 	ScopeType extends string,
 	TokenType extends BaseToken,
-	ProfileType
+	ProfileType,
 > {
 	public abstract readonly key: string;
 	public abstract readonly name: string;
@@ -98,6 +98,31 @@ export abstract class AbstractBaseOAuthProvider<
 		return `${this.authorizeEndpoint}?${params.toString()}`;
 	}
 
+	/**
+	 * Creates the authorization URL with combined scopes.
+	 *  @param additionalScopes Additional scopes provided by the user.
+	 *  @returns {url, state, codeVerifier}.
+	 */
+	public createAuthorizationRequest(additionalScopes: ScopeType[] = []): {
+		url: string;
+		state: string;
+		codeVerifier?: string;
+	} {
+		const scopeString = this.transformScopes(additionalScopes);
+		const params = new URLSearchParams({
+			client_id: this.clientId,
+			redirect_uri: this.redirectUri,
+			response_type: "code",
+			scope: scopeString,
+			state: this.state,
+			// Add other common parameters as needed
+		});
+		const url = `${this.authorizeEndpoint}?${params.toString()}`;
+		const state = this.getState();
+
+		return { url, state };
+	}
+
 	// Handle callback - to be implemented by subclasses
 	protected abstract exchangeCodeForTokens(code: string): Promise<TokenType>;
 
@@ -168,7 +193,7 @@ export abstract class AbstractBaseOAuthProvider<
 export abstract class AbstractOAuthProvider<
 	ScopeType extends string,
 	TokenType extends BaseToken,
-	ProfileType
+	ProfileType,
 > extends AbstractBaseOAuthProvider<ScopeType, TokenType, ProfileType> {
 	readonly type = "oauth";
 	/**
@@ -200,7 +225,7 @@ export abstract class AbstractOAuthProvider<
 export abstract class AbstractOIDCProvider<
 	ScopeType extends string,
 	TokenType extends BaseToken,
-	ProfileType
+	ProfileType,
 > extends AbstractBaseOAuthProvider<ScopeType, TokenType, ProfileType> {
 	readonly type = "oidc";
 	/**

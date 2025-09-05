@@ -4,7 +4,7 @@ import {
 	OAuthProviderResponse,
 	OAuthProviderConfig,
 	BaseTokenSchema,
-} from "./oauth-provider";
+} from "./base";
 import { UserAccountProfile } from "../../types";
 import { AdapterAccount } from "core/adapter";
 import { decodeJwt } from "jose";
