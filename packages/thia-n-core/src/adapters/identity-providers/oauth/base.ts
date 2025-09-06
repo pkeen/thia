@@ -4,6 +4,7 @@ import { AdapterAccount } from "core/adapter";
 import { Account } from "entities";
 import { decodeJwt } from "jose";
 import { z } from "zod";
+import { ProviderMeta } from "application/ports/identity-provider";
 
 export const BaseTokenSchema = z.object({
 	access_token: z.string(),
@@ -188,6 +189,8 @@ export abstract class AbstractBaseOAuthProvider<
 	protected abstract convertToUserAccountProfile(
 		profile: ProfileType
 	): UserAccountProfile;
+
+	public abstract meta(): ProviderMeta;
 }
 
 export abstract class AbstractOAuthProvider<

@@ -1,12 +1,19 @@
 // import type { Providers } from "../../application/ports/identity-provider/identity-provider";
-import { IdentityAssertion } from "application/ports/identity-provider";
+import {
+	IdentityAssertion,
+	IdentityProviderPort,
+} from "application/ports/identity-provider";
 import { AuthProvider } from "./oauth";
 
 export type ProviderMap = {
 	[key: string]: AuthProvider;
 };
 
-const createIdentityManager = (providers: ProviderMap) => {
+// TODO: perhaps we need to define a better interface, port for the providers
+
+export const createIdentityManager = (
+	providers: ProviderMap
+): IdentityProviderPort => {
 	const get = (id?: string) => {
 		if (!id) return { err: { code: "PROVIDER_NOT_GIVEN" as const } };
 		const p = providers[id];
@@ -48,7 +55,7 @@ const createIdentityManager = (providers: ProviderMap) => {
 					profile: {
 						email: userProfile.email,
 						name: userProfile.name,
-						avatarUrl: userProfile.imageUrl,
+						avatarUrl: userProfile.image,
 					},
 					account: {
 						provider,

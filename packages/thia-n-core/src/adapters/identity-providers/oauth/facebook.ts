@@ -8,7 +8,8 @@ import {
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { UserAccountProfile } from "core/types";
-import { AdapterAccount } from "core/adapter";
+// import { AdapterAccount } from "core/adapter";
+import { ProviderMeta } from "application/ports/identity-provider";
 
 type ScopeType = "profile" | "openid" | "email";
 
@@ -101,6 +102,15 @@ export class Facebook extends AbstractOAuthProvider<
 			name: profile.name,
 			email: profile.email,
 			image: profile.picture.data.url,
+		};
+	}
+
+	meta(): ProviderMeta {
+		return {
+			id: this.key,
+			label: this.name,
+			type: this.type,
+			style: this.style,
 		};
 	}
 }
