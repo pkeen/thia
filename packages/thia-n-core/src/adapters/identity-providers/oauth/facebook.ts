@@ -77,6 +77,7 @@ export class Facebook extends AbstractOAuthProvider<
 			headers,
 		});
 		const res = await data.json();
+		if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
 		// console.log("FACEBOOK TOKENS:", res);
 		return res;
 	}

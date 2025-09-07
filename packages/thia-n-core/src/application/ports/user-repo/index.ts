@@ -1,4 +1,4 @@
-import { UserPublic } from "../../../entities/user";
+// import { UserPublic } from "../../../entities/user";
 // import { SignupCredentials } from "../providers/credentials/index.types";
 /**
  * WARNING: This module takes heavy influence from next auth.

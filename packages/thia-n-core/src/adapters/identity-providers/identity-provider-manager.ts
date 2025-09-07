@@ -4,12 +4,21 @@ import {
 	IdentityProviderPort,
 } from "application/ports/identity-provider";
 import { AuthProvider } from "./oauth";
+import { AccountTypes } from "entities";
 
 export type ProviderMap = {
 	[key: string]: AuthProvider;
 };
 
 // TODO: perhaps we need to define a better interface, port for the providers
+export interface ProviderPort {
+	type: AccountTypes;
+	createAuthorizationRequest: () => {
+		url: string;
+		state: string;
+		codeVerifier?: string;
+	};
+}
 
 export const createIdentityManager = (
 	providers: ProviderMap
