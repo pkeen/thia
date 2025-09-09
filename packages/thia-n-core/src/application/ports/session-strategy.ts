@@ -1,11 +1,18 @@
 import { User } from "../../entities/user";
 import { Keycard } from "../../entities/keycards";
+import { ValidationError } from "entities/error";
 
-export interface ValidationStrategyPort {
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+export type AuthState<A = {}> = { user: User & A; keyCards: Keycard[] };
+
+export interface SessionStrategyPort<A = {}> {
 	name: string;
 	createKeyCards(user: User): Promise<Keycard[]>;
-	logout(keyCards: Keycard[]): Promise<AuthState>;
-	validate(keyCards: Keycard[]): Promise<AuthResult>;
+	logout(keyCards: Keycard[]): Promise<Result<AuthState<A>, ValidationError>>;
+	validate(
+		keyCards: Keycard[]
+	): Promise<Result<AuthState<A>, ValidationError>>;
 	// validateCard(keyCards: KeyCards, name: string): Promise<AuthResult>;
 	// validateAll(keyCards: KeyCards): Promise<AuthValidationResult>;
 	// validateRefresh?(keyCards: KeyCards): Promise<AuthValidationResult>;
