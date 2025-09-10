@@ -7,8 +7,8 @@
 // 	AuthResult,
 //     Logger,
 // } from "../../types";
-import { User, Keycard } from "entities";
-import { JwtConfig } from "./index.types";
+import { User, Keycard, UserPublic } from "entities";
+// import { JwtConfig } from "./index.types";
 // import { User } from "../../../auth-system/index.types";
 // import { JwtTokenService } from "../../token-service";
 import { JwtTokenService, TokenService } from "./token-service";
@@ -25,6 +25,7 @@ import {
 import type { RBAC } from "../../../authorization";
 import { SessionStrategyPort } from "application";
 import { LoggerPort } from "application/ports/logger";
+import { SignOptions, TokenServicePort } from "./token-service-port";
 
 // const logger = createLogger({});
 
@@ -179,11 +180,17 @@ import { LoggerPort } from "application/ports/logger";
 // 	}
 // }
 
-export const JwtStrategyFn = (
+export interface JwtConfig {
+	access: SignOptions;
+	refresh: SignOptions;
+}
+
+export const JwtStrategy = (
 	config: JwtConfig,
-	logger: LoggerPort
+	logger: LoggerPort,
+	tokenService: TokenServicePort
 ): SessionStrategyPort => {
-	const tokenService = JwtTokenService(); // for now lets get away from classes and into functions
+	// const tokenService = JwtTokenService(); // for now lets get away from classes and into functions
 
 	const validateCard = async (keyCards: Keycard[], name: string) => {
 		try {
@@ -191,14 +198,14 @@ export const JwtStrategyFn = (
 			if (!card) {
 				throw new KeyCardMissingError(`${name} Key Card Missing`);
 			}
-			const result = await tokenService.validate(
+			const result = await tokenService.verify<UserPublic>(
 				card.value,
 				config[name]
 			);
 			// console.log("VAIDATION RESULT: ", result);
 			return {
 				// authenticated: true,
-				user: result.user,
+				user: result.claims,
 				keyCards,
 			};
 		} catch (error) {
@@ -228,16 +235,16 @@ export const JwtStrategyFn = (
 
 	return {
 		name: "jwt",
-		createKeyCards: async (user: User): Promise<Keycard[]> => {
+		createKeyCards: async (user: UserPublic): Promise<Keycard[]> => {
 			try {
 				const keyCards: Keycard[] = [];
 
-				const accessToken = await tokenService.generate(
-					{ user },
+				const accessToken = await tokenService.sign<UserPublic>(
+					user,
 					config.access
 				);
-				const refreshToken = await tokenService.generate(
-					{ user: { id: user.id } },
+				const refreshToken = await tokenService.sign<{ id: string }>(
+					{ id: user.id },
 					config.refresh
 				);
 				const accessKeyCard: Keycard = {

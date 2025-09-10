@@ -1,4 +1,5 @@
-import { User } from "../../../auth-system/index.types";
+// import { User } from "../../../auth-system/index.types";
+import { User } from "../../../../entities/user";
 import { type JWTPayload } from "jose";
 
 export interface JwtOptions {
@@ -23,7 +24,7 @@ export interface AccessUser {
 	email: string;
 	name?: string;
 	image?: string;
-	roles?: object;
+	// roles?: object;
 }
 
 /*
@@ -41,14 +42,14 @@ export interface RefreshTokenPayload extends JWTPayload {
 	id: string; // User ID
 }
 
-export interface AuthPayload extends JWTPayload {
-	user: AccessUser | RefreshUser;
+export interface AuthPayload<A = {}> extends JWTPayload {
+	user: (AccessUser & A) | RefreshUser;
 }
 
 /*
     Token service interface 
 */
-export interface TokenService {
+export interface TokenService<A = {}> {
 	generate: (payload: AuthPayload, options: JwtOptions) => Promise<string>;
 	validate: (token: string, options: JwtOptions) => Promise<VerifiedToken>;
 	// verify: (token: string, options: JwtOptions) => Promise<User>; // return user now

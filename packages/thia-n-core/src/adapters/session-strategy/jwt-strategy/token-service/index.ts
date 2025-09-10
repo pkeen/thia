@@ -19,8 +19,9 @@ import {
 import { JWTPayload, SignJWT, jwtVerify } from "jose";
 // import { createLogger } from "@pete_keen/logger";
 import { Role } from "core/roles/index.types";
+import { TokenServicePort } from "../token-service-port";
 
-export const JwtTokenService = (): TokenService => {
+export const JwtTokenService = (): TokenServicePort => {
 	return {
 		generate: async (
 			payload: AuthPayload,
@@ -32,16 +33,14 @@ export const JwtTokenService = (): TokenService => {
 				.setExpirationTime(options.expiresIn || "1h")
 				.sign(new TextEncoder().encode(options.secretKey));
 		},
-		validate: async (
-			token: string,
-			options: JwtOptions
-		): Promise<AuthPayload> => {
+		validate: async (token: string, options: JwtOptions) => {
 			try {
 				const { payload, protectedHeader } = await jwtVerify(
 					token,
 					new TextEncoder().encode(options.secretKey)
 				);
 				console.log("PAYLOAD: ", payload);
+                
 				return payload;
 			} catch (error: any) {
 				if (error.code === "ERR_JWT_EXPIRED") {

@@ -12,6 +12,8 @@ export interface User {
 
 export type UserCreate = Omit<User, "emailVerified" | "createdAt" | "id">;
 
+export type UserPublic = Omit<User, "emailVerified" | "createdAt">;
+
 // const user = z.object({
 // 	id: z.string(),
 // 	email: z.string(),
