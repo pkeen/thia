@@ -70,7 +70,7 @@ export type SignOptions = {
 	audience?: string | string[];
 	subject?: string;
 	expiresIn?: string | number; // "15m", 900, etc.
-	name: string;
+	// name: string;
 };
 
 // export interface JwtConfig {
