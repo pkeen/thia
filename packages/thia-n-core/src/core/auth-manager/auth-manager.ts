@@ -9,13 +9,13 @@ import {
 } from "../types";
 import { AuthProvider } from "../providers";
 // import { Adapter } from "../adapter";
-import { UserRepo } from "application/ports/user-repo/user-repo";
+import { UserRepo, UserRepoPort } from "application/ports/user-repo/user-repo";
 import { IAuthManager, AuthNCallbacks } from "./types";
 import { SignInSystem, type SignInParams } from "../signin-system";
 import { KeyCardMissingError, UserNotFoundError } from "core/error";
 
 export function AuthManager<Extra>(
-	userRegistry: UserRepo,
+	userRegistry: UserRepoPort,
 	authStrategy: AuthStrategy,
 	providers: AuthProvider[],
 	logger: Logger,

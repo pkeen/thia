@@ -248,12 +248,12 @@ export const JwtStrategy = (
 					config.refresh
 				);
 				const accessKeyCard: Keycard = {
-					name: config.access.name,
+					name: "access",
 					value: accessToken,
 					type: "access",
 				};
 				const refreshKeyCard: Keycard = {
-					name: config.refresh.name,
+					name: "refresh",
 					value: refreshToken,
 					type: "refresh",
 				};

@@ -7,6 +7,7 @@ import {
 // import { AdapterAccount } from "./adapter";
 import { Account, ProviderType } from "entities";
 import { AuthProvider } from "./oauth";
+import { Result } from "entities/utilities";
 // import { ProviderMeta } from "application/presentation/provider-meta";
 
 // export type ProviderKind =
@@ -60,8 +61,6 @@ export interface UserAccountProfile {
 // }
 
 // export type SignInResult = SuccessResult | ErrorResult | RedirectResult;
-
-
 
 // export interface SignInParams {
 // 	// type: "oauth" | "credentials";
@@ -145,7 +144,7 @@ export type ProviderError =
 	| "TOKEN_INVALID"
 	| "UNKNOWN";
 
-export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+// export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
 export interface IdentityProviderPort {
 	beginOAuth(

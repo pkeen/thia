@@ -1,7 +1,7 @@
 import type { User, UserCreate } from "../../../entities/user";
 import type { Account } from "entities/account";
 
-export interface UserRepo {
+export interface UserRepoPort {
 	/*
 	 * indentifier
 	 */

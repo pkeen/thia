@@ -3,7 +3,7 @@ import { AuthResult, AuthState } from "../presentation/auth-response";
 import { AuthNCallbacks } from "application/ports/callbacks";
 import { IdentityProviderPort } from "application/ports/identity-provider";
 import { UserRepo } from "application/ports/user-repo/user-repo";
-import { ValidationStrategyPort } from "application/ports/session-strategy";
+import { ValidationStrategyPort } from "application/ports/auth-strategy";
 // import { DisplayProvider } from "application/presentation/provider-meta";
 
 // --- Auth Manager Interface ---

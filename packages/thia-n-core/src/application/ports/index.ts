@@ -1,3 +1,3 @@
 export * from "./user-repo";
 export * from "./callbacks";
-export * from "./session-strategy";
+export * from "./auth-strategy";

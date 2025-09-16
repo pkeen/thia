@@ -6,7 +6,7 @@ export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
 export type AuthState<A = {}> = { user: UserPublic & A; keyCards: Keycard[] };
 
-export interface SessionStrategyPort<A = {}> {
+export interface AuthStrategyPort<A = {}> {
 	name: string;
 	createKeyCards(user: User): Promise<Keycard[]>;
 	logout(keyCards: Keycard[]): Promise<Result<AuthState<A>, ValidationError>>;
