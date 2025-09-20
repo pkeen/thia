@@ -8,7 +8,7 @@ export type AuthState<A = {}> = { user: UserPublic & A; keyCards: Keycard[] };
 
 export interface AuthStrategyPort<A = {}> {
 	name: string;
-	createKeyCards(user: User): Promise<Keycard[]>;
+	createKeyCards(user: UserPublic): Promise<Keycard[]>;
 	logout(keyCards: Keycard[]): Promise<Result<AuthState<A>, ValidationError>>;
 	validate(
 		keyCards: Keycard[]

@@ -19,7 +19,7 @@ const sanitizeUser = (user: User): UserPublic => ({
 });
 
 export async function completeLogin<E = {}>(input: {
-	provider: Provider;
+	provider: string; // TODO String for now - enum or union later
 	code: string;
 	enrichUser: (u: UserPublic) => Promise<E> | E;
 	ports: {

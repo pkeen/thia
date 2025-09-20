@@ -23,7 +23,7 @@ import {
 } from "../../../entities/error";
 // import { createLogger } from "@pete_keen/logger";
 import type { RBAC } from "../../../authorization";
-import { SessionStrategyPort } from "application";
+import { AuthStrategyPort } from "application";
 import { LoggerPort } from "application/ports/logger";
 import { SignOptions, TokenServicePort } from "./token-service-port";
 
@@ -189,7 +189,7 @@ export const JwtStrategy = (
 	config: JwtConfig,
 	logger: LoggerPort,
 	tokenService: TokenServicePort
-): SessionStrategyPort => {
+): AuthStrategyPort => {
 	// const tokenService = JwtTokenService(); // for now lets get away from classes and into functions
 
 	const validateCard = async (keyCards: Keycard[], name: string) => {

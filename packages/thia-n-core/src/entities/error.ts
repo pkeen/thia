@@ -48,6 +48,9 @@ export enum AuthErrorCode {
 	// SignIn Errors (400s)
 	PROVIDER_NOT_FOUND = "PROVIDER_NOT_FOUND",
 	PROVIDER_NOT_GIVEN = "PROVIDER_NOT_GIVEN",
+
+	// Login Error
+	LOGIN_ERROR = "LOGIN_ERROR",
 }
 
 // // Specific error classes for different categories
@@ -251,3 +254,41 @@ export async function safeExecute<T, E extends ErrorType>(
 		);
 	}
 }
+
+
+
+
+
+// New style errors
+
+// shared/errors/base.ts
+export type ErrorCode = string; // narrow with unions per layer below
+
+export interface AppError<C extends ErrorCode = ErrorCode> extends Error {
+  code: C;
+  cause?: unknown;
+}
+export const makeError = <C extends ErrorCode>(code: C, message?: string, cause?: unknown): AppError<C> => {
+  const e = new Error(message ?? code) as AppError<C>;
+  e.code = code; e.cause = cause; return e;
+};
+
+export type Result<T, E extends AppError = AppError> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
+
+  // domain/errors.ts
+export type DomainErrorCode =
+  | "ACCOUNT_LINK_CONFLICT"
+  | "USER_BLOCKED"
+  | "KEYCARD_MISSING"
+  | "INVARIANT_VIOLATION";
+
+export type DomainError = AppError<DomainErrorCode>;
+
+export const Errors = {
+  KeycardMissing: (name: string) => makeError("KEYCARD_MISSING", `${name} key card missing`),
+  AccountLinkConflict: () => makeError("ACCOUNT_LINK_CONFLICT", "Account link conflict"),
+  // ...
+};
