@@ -3,6 +3,7 @@ import { IdentityProviderPort } from "application/ports/identity-provider";
 import { LoggerPort } from "application/ports/logger";
 import { UserRepoPort } from "application/ports/user-repo/user-repo";
 import { Keycard, User, UserPublic } from "entities";
+import { AppError } from "entities/error";
 import { Result } from "entities/utilities";
 
 // Use-case (application layer)
@@ -17,6 +18,16 @@ const sanitizeUser = (user: User): UserPublic => ({
 	email: user.email,
 	image: user.image,
 });
+
+// application/errors.ts
+export type LoginErrorCode =
+  | "PROVIDER_ERROR"          // mapped from IdentityProviderError
+  | "USER_NOT_FOUND"
+  | "ACCOUNT_LINK_CONFLICT"
+  | "SESSION_ISSUE"
+  | "UNKNOWN";
+
+export type LoginError = AppError<LoginErrorCode>;
 
 export async function completeLogin<E = {}>(input: {
 	provider: string; // TODO String for now - enum or union later
