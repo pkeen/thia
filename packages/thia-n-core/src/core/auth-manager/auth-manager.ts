@@ -10,6 +10,7 @@ import {
 import { AuthProvider } from "../providers";
 // import { Adapter } from "../adapter";
 import { UserRepo, UserRepoPort } from "application/ports/user-repo/user-repo";
+// import { UserRepository } from "../types";
 import { IAuthManager, AuthNCallbacks } from "./types";
 import { SignInSystem, type SignInParams } from "../signin-system";
 import { KeyCardMissingError, UserNotFoundError } from "core/error";

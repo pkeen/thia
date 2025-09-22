@@ -39,6 +39,8 @@ export interface UserAccountProfile {
 	image?: string | null;
 }
 
+export interface AdapterAccount extends Account {}
+
 // export type RedirectResult = {
 // 	type: "redirect";
 // 	url: string;
@@ -133,7 +135,7 @@ export interface UserAccountProfile {
 // stable contract the use-case depends on
 export type IdentityAssertion = {
 	profile: { email: string; name?: string; avatarUrl?: string };
-	account?: { provider: string; providerAccountId: string };
+	account?: AdapterAccount;
 };
 
 export type ProviderError =

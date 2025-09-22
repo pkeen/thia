@@ -23,6 +23,8 @@ export interface Account {
 	userId: string;
 	type: AccountTypes;
 
+	provider: string;
+
 	providerAccountId: string;
 	/** Provider's type for this account */
 
