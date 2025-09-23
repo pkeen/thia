@@ -41,6 +41,13 @@ export interface UserAccountProfile {
 
 export interface AdapterAccount extends Account {}
 
+export interface UserAccountProfile {
+	accountId: string;
+	name?: string | null;
+	email: string;
+	image?: string | null;
+}
+
 // export type RedirectResult = {
 // 	type: "redirect";
 // 	url: string;

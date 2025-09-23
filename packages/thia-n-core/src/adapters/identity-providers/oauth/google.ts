@@ -5,8 +5,9 @@ import {
 	OAuthProviderConfig,
 	BaseTokenSchema,
 } from "./base";
-import { UserAccountProfile } from "../../types";
-import { AdapterAccount } from "core/adapter";
+// import { UserAccountProfile } from "../../types";
+import { UserAccountProfile } from "application/ports/identity-provider";
+import { AdapterAccount } from "application/ports/identity-provider";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 

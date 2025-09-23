@@ -1,6 +1,6 @@
 // import crypto from "crypto";
 import { UserAccountProfile } from "core/types";
-import { AdapterAccount } from "core/adapter";
+import { AdapterAccount } from "application/ports/identity-provider";
 import { Account } from "entities";
 import { decodeJwt } from "jose";
 import { z } from "zod";
