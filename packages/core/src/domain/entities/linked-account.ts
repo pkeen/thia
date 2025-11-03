@@ -1,6 +1,6 @@
 // import { z } from "zod";
 
-import { AccountId, Provider, ProviderAccountId } from "domain/primitives";
+import { AccountId, Provider, ProviderAccountId } from "../primitives";
 
 // export const accountProviderType = z.enum([
 // 	"oidc",
