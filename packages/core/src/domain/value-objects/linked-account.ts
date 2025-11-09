@@ -44,7 +44,7 @@ export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
 export class LinkedAccount {
 	private constructor(
-		public readonly id: AccountId,
+		// public readonly id: AccountId, // Not sure if this is needed make it VO or entity?
 		public readonly type: AccountType,
 		public readonly provider: Provider,
 		public readonly providerAccountId: ProviderAccountId,
@@ -58,7 +58,7 @@ export class LinkedAccount {
 	) {}
 
 	static link(input: {
-		id: AccountId;
+		// id: AccountId;
 		type: AccountType;
 		provider: Provider | string;
 		providerAccountId: ProviderAccountId | string;
@@ -80,7 +80,7 @@ export class LinkedAccount {
 				: input.providerAccountId;
 
 		return new LinkedAccount(
-			input.id,
+			// input.id,
 			input.type,
 			provider,
 			providerAccountId,

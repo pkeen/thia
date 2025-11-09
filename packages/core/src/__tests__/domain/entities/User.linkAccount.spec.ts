@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { User } from "../../../domain/entities/user";
-import { AccountId, Provider, ProviderAccountId, UserId } from "../../../domain/primitives";
+import {
+	AccountId,
+	Provider,
+	ProviderAccountId,
+	UserId,
+} from "../../../domain/primitives";
 import { EmailAddress } from "../../../domain/value-objects/email-address";
-import { LinkedAccount } from "../../../domain/entities/linked-account";
+import { LinkedAccount } from "../../../domain/value-objects/linked-account";
 
 const mkUser = () =>
 	User.create({ id: "u1" as UserId, email: EmailAddress.create("me@x.com") });

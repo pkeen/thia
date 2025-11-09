@@ -2,13 +2,6 @@
 export const KEYCARD_TYPE = ["access", "refresh", "session"] as const;
 export type KeycardType = (typeof KEYCARD_TYPE)[number];
 
-// export interface Keycard {
-// 	name: string;
-// 	value: string;
-// 	expiresAt?: Date;
-// 	type: KeycardType;
-// }
-
 export class Keycard {
 	private constructor(
 		public readonly type: KeycardType,

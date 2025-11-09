@@ -1,44 +1,17 @@
-// import { z } from "zod";
-// using pure TS no zod now
 
-// export interface User {
-// 	id: string;
-// 	email: string;
-// 	emailVerified: Date | null;
-// 	name?: string;
-// 	image?: string; // maybe change this to imageUrl (more accurate)
-// 	createdAt: Date;
-// }
-
-export type UserCreate = Omit<UserSnapshot, "emailVerified" | "createdAt" | "id">;
+export type UserCreate = Omit<
+	UserSnapshot,
+	"emailVerified" | "createdAt" | "id"
+>;
 
 export type UserPublic = Omit<UserSnapshot, "emailVerified" | "createdAt">;
-
-// const user = z.object({
-// 	id: z.string(),
-// 	email: z.string(),
-// 	emailVerified: z.date().nullable().default(null),
-// 	name: z.string().optional(),
-// 	image: z.string().optional(),
-// });
-// export type User = z.infer<typeof user>;
-
-// export const userCreate = user.omit({ id: true });
-// export type UserCreate = z.infer<typeof userCreate>;
-
-// export const userPublic = user.extend({
-// 	emailVerified: z.never(),
-// });
-// export type UserPublic = z.infer<typeof userPublic>;
-
-// domain/entities/user.ts
 
 // --- Imports from your domain (adjust paths as needed) ---
 import { Provider, ProviderAccountId, UserId } from "../primitives"; // type Brand<string,"UserId">
 import { EmailAddress } from "../value-objects/email-address";
 import { PersonName } from "../value-objects/person-name";
 import { ImageUrl } from "../value-objects/image-url";
-import { AccountType, LinkedAccount } from "../entities/linked-account";
+import { AccountType, LinkedAccount } from "../value-objects/linked-account";
 import { Keycard } from "../value-objects/keycard";
 
 // --- Minimal domain events used by this entity ---
@@ -52,9 +25,9 @@ export type DomainEvent =
 			provider: string;
 			providerAccountId: string;
 	  }
-	| { type: "KeycardIssued"; userId: UserId; keycardType: Keycard["type"] }
-	| { type: "KeycardsRevoked"; userId: UserId; count: number }
-	| { type: "ExpiredKeycardsPurged"; userId: UserId; count: number };
+	| { type: "KeycardIssued"; userId: UserId; keycardType: Keycard["type"] };
+// | { type: "KeycardsRevoked"; userId: UserId; count: number }
+// | { type: "ExpiredKeycardsPurged"; userId: UserId; count: number };
 
 // --- Snapshot used for persistence/rehydration (DTO-ish) ---
 export type UserSnapshot = {
@@ -66,6 +39,7 @@ export type UserSnapshot = {
 	createdAt: string;
 
 	// Optional embedded state (keep if you store these alongside user)
+	// Im not sure this is needed currently
 	accounts?: Array<{
 		type: AccountType;
 		provider: Provider;
@@ -328,31 +302,31 @@ export class User {
 		];
 	}
 
-	/** Revoke keycards that match a predicate. */
-	revokeKeycards(match: (k: Keycard) => boolean): DomainEvent[] {
-		const before = this._keycards.length;
-		this._keycards = Object.freeze(this._keycards.filter((k) => !match(k)));
-		const removed = before - this._keycards.length;
-		return removed > 0
-			? [{ type: "KeycardsRevoked", userId: this.id, count: removed }]
-			: [];
-	}
+	// /** Revoke keycards that match a predicate. */
+	// revokeKeycards(match: (k: Keycard) => boolean): DomainEvent[] {
+	// 	const before = this._keycards.length;
+	// 	this._keycards = Object.freeze(this._keycards.filter((k) => !match(k)));
+	// 	const removed = before - this._keycards.length;
+	// 	return removed > 0
+	// 		? [{ type: "KeycardsRevoked", userId: this.id, count: removed }]
+	// 		: [];
+	// }
 
-	/** Remove expired keycards (utility to run on login/refresh). */
-	purgeExpiredKeycards(at: Date = new Date()): DomainEvent[] {
-		const before = this._keycards.length;
-		this._keycards = Object.freeze(
-			this._keycards.filter((k) => !k.isExpired(at))
-		);
-		const removed = before - this._keycards.length;
-		return removed > 0
-			? [
-					{
-						type: "ExpiredKeycardsPurged",
-						userId: this.id,
-						count: removed,
-					},
-				]
-			: [];
-	}
+	// /** Remove expired keycards (utility to run on login/refresh). */
+	// purgeExpiredKeycards(at: Date = new Date()): DomainEvent[] {
+	// 	const before = this._keycards.length;
+	// 	this._keycards = Object.freeze(
+	// 		this._keycards.filter((k) => !k.isExpired(at))
+	// 	);
+	// 	const removed = before - this._keycards.length;
+	// 	return removed > 0
+	// 		? [
+	// 				{
+	// 					type: "ExpiredKeycardsPurged",
+	// 					userId: this.id,
+	// 					count: removed,
+	// 				},
+	// 			]
+	// 		: [];
+	// }
 }
