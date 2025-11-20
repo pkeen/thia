@@ -1,8 +1,7 @@
-
-export type UserCreate = Omit<
-	UserSnapshot,
-	"emailVerified" | "createdAt" | "id"
->;
+// export type UserCreate = Omit<
+// 	UserSnapshot,
+// 	"emailVerified" | "createdAt" | "id"
+// >;
 
 export type UserPublic = Omit<UserSnapshot, "emailVerified" | "createdAt">;
 
@@ -80,31 +79,49 @@ export class User {
 	) {
 		this._email = email;
 		this._emailVerified = emailVerified;
-		this._name = name;
-		this._image = image;
+		// this._name = name; // ✅ already a VO, assign as-is
+		this._name = name ?? PersonName.from(); // ✅ guarantee it’s set
+		this._image = image; // ✅ already a VO, assign as-is
 		this._createdAt = createdAt;
 	}
 
-	// ---------- FACTORIES ----------
-
-	/** Create a brand-new user (domain factory), with sensible defaults. */
+	/** Domain factory */
 	static create(params: {
 		id: UserId;
 		email: EmailAddress;
-		name?: PersonName;
-		image?: ImageUrl;
+		name?: string; // accept raw primitives here
+		image?: string;
 		now?: Date;
 	}): User {
-		const u = new User(
+		return new User(
 			params.id,
 			params.email,
 			null,
-			params.name ?? PersonName.from(undefined),
-			params.image ?? ImageUrl.from(undefined),
+			PersonName.from(params.name), // ✅ build VO here
+			ImageUrl.from(params.image), // ✅ build VO here
 			params.now ?? new Date()
 		);
-		return u;
 	}
+	// ---------- FACTORIES ----------
+
+	// /** Create a brand-new user (domain factory), with sensible defaults. */
+	// static create(params: {
+	// 	id: UserId;
+	// 	email: EmailAddress;
+	// 	name?: PersonName;
+	// 	image?: ImageUrl;
+	// 	now?: Date;
+	// }): User {
+	// 	const u = new User(
+	// 		params.id,
+	// 		params.email,
+	// 		null,
+	// 		params.name ?? PersonName.from(undefined),
+	// 		params.image ?? ImageUrl.from(undefined),
+	// 		params.now ?? new Date()
+	// 	);
+	// 	return u;
+	// }
 
 	/** Rehydrate entity from a persistence snapshot. */
 	static rehydrate(s: UserSnapshot): User {
@@ -222,14 +239,14 @@ export class User {
 		let changed = false;
 		if (input.name !== undefined) {
 			const next = PersonName.from(input.name);
-			if (next.value !== this._name.value) {
+			if (!this._name.equals(next)) {
 				this._name = next;
-				changed = true;
+				// events.push(UserNameChanged(...));
 			}
 		}
 		if (input.image !== undefined) {
 			const next = ImageUrl.from(input.image);
-			if (next.value !== this._image.value) {
+			if (!this._image.equals(next)) {
 				this._image = next;
 				changed = true;
 			}

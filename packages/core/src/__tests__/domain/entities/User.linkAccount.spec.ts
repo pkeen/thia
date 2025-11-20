@@ -16,7 +16,7 @@ describe("User.linkAccount", () => {
 	it("is idempotent for same provider+providerAccountId", () => {
 		const u = mkUser();
 		const acc = LinkedAccount.link({
-			id: "a1" as AccountId,
+			// id: "a1" as AccountId,
 			type: "oidc",
 			provider: "google",
 			providerAccountId: "123",
@@ -32,7 +32,7 @@ describe("User.linkAccount", () => {
 		const u = mkUser();
 		u.linkAccount(
 			LinkedAccount.link({
-				id: "a1" as AccountId,
+				// id: "a1" as AccountId,
 				type: "oidc",
 				provider: "google",
 				providerAccountId: "123",
@@ -41,7 +41,7 @@ describe("User.linkAccount", () => {
 		expect(() =>
 			u.linkAccount(
 				LinkedAccount.link({
-					id: "a2" as AccountId,
+					// id: "a2" as AccountId,
 					type: "oidc",
 					provider: "google",
 					providerAccountId: "456",

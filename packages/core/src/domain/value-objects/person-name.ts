@@ -34,8 +34,8 @@ export class PersonName {
 		return this._value;
 	}
 
-	equals(other: PersonName): boolean {
-		return this._value === other._value;
+	equals(other: PersonName | null | undefined): boolean {
+		return (other?.value ?? null) === this._value;
 	}
 
 	toString(): string {

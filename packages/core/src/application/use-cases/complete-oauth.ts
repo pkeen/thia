@@ -1,9 +1,9 @@
-import { AuthStrategyPort } from "../ports";
-import { IdentityProviderPort } from "../ports/identity-provider";
-import { LoggerPort } from "../ports/logger";
-import { UserRepoPort } from "../ports/user-repo/user-repo";
-import { Keycard, User, UserPublic } from "../entities";
-import { AppError } from "../entities/error";
+import { AuthStrategyPort } from "../../ports/auth-strategy";
+import { IdentityProviderPort } from "../../ports/identity-provider";
+import { LoggerPort } from "../../ports/logger";
+import { UserRepoPort } from "../../ports/user-repo/user-repo";
+import { Keycard, User, UserPublic } from "../../entities";
+import { AppError } from "../../entities/error";
 import { Result } from "../entities/utilities";
 
 // Use-case (application layer)

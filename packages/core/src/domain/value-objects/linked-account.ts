@@ -1,6 +1,6 @@
 // import { z } from "zod";
 
-import { AccountId, Provider, ProviderAccountId } from "../primitives";
+import { AccountId, asProvider, asProviderAccountId, Provider, ProviderAccountId } from "../primitives";
 
 // export const accountProviderType = z.enum([
 // 	"oidc",
@@ -72,11 +72,11 @@ export class LinkedAccount {
 	}): LinkedAccount {
 		const provider =
 			typeof input.provider === "string"
-				? Provider(input.provider)
+				? asProvider(input.provider)
 				: input.provider;
 		const providerAccountId =
 			typeof input.providerAccountId === "string"
-				? ProviderAccountId(input.providerAccountId)
+				? asProviderAccountId(input.providerAccountId)
 				: input.providerAccountId;
 
 		return new LinkedAccount(
