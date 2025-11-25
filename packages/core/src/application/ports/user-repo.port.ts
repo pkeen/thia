@@ -3,12 +3,12 @@ import type { EmailAddress } from "../../domain/value-objects/email-address";
 import type { UserId } from "../../domain/primitives/index";
 import type { LinkedAccount } from "../../domain/value-objects/linked-account";
 
-export interface UserRepoPort {
+export interface UserRepository {
 	name: string; // identifier for debugging/metrics (fine)
 	getById(id: UserId): Promise<User | null>;
 	getByEmail(email: EmailAddress): Promise<User | null>;
 	save(user: User): Promise<void>;
-	addAccount(userId: UserId, account: LinkedAccount): Promise<void>; // or user.save() + repo.save(user)
+	// addAccount(userId: UserId, account: LinkedAccount): Promise<void>; // or user.save() + repo.save(user)
 }
 
 // export interface UserRepoPort {
