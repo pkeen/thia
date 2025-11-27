@@ -36,6 +36,8 @@ export type UserSnapshot = {
 	name?: string;
 	image?: string;
 	createdAt: string;
+	tokenVersion: number;
+	passwordHash: string | null;
 
 	// Optional embedded state (keep if you store these alongside user)
 	// Im not sure this is needed currently
@@ -65,6 +67,8 @@ export class User {
 	private _name: PersonName;
 	private _image: ImageUrl;
 	private _createdAt: Date;
+	private _tokenVersion: number;
+	private _passwordHash: string | null;
 
 	private _accounts: ReadonlyArray<LinkedAccount> = Object.freeze([]);
 	private _keycards: ReadonlyArray<Keycard> = Object.freeze([]);
@@ -75,7 +79,9 @@ export class User {
 		emailVerified: Date | null,
 		name: PersonName,
 		image: ImageUrl,
-		createdAt: Date
+		createdAt: Date,
+		tokenVersion: number,
+		passwordHash: string | null
 	) {
 		this._email = email;
 		this._emailVerified = emailVerified;
@@ -83,6 +89,8 @@ export class User {
 		this._name = name ?? PersonName.from(); // ✅ guarantee it’s set
 		this._image = image; // ✅ already a VO, assign as-is
 		this._createdAt = createdAt;
+		this._tokenVersion = tokenVersion;
+		this._passwordHash = passwordHash;
 	}
 
 	/** Domain factory */
@@ -99,7 +107,9 @@ export class User {
 			null,
 			PersonName.from(params.name), // ✅ build VO here
 			ImageUrl.from(params.image), // ✅ build VO here
-			params.now ?? new Date()
+			params.now ?? new Date(),
+			0,
+			null
 		);
 	}
 	// ---------- FACTORIES ----------
@@ -131,7 +141,9 @@ export class User {
 			s.emailVerified ? new Date(s.emailVerified) : null,
 			PersonName.from(s.name),
 			ImageUrl.from(s.image),
-			new Date(s.createdAt)
+			new Date(s.createdAt),
+			s.tokenVersion,
+			s.passwordHash
 		);
 
 		if (s.accounts?.length) {
@@ -181,6 +193,8 @@ export class User {
 			name: this._name.value,
 			image: this._image.value,
 			createdAt: this._createdAt.toISOString(),
+			tokenVersion: this._tokenVersion,
+			passwordHash: this._passwordHash,
 			accounts: this._accounts.map((a) => ({
 				type: a.type,
 				provider: a.provider,
@@ -317,6 +331,25 @@ export class User {
 		return [
 			{ type: "KeycardIssued", userId: this.id, keycardType: card.type },
 		];
+	}
+
+	// —— token version API ——
+	tokenVersion(): number {
+		return this._tokenVersion;
+	}
+	bumpTokenVersion(): void {
+		this._tokenVersion += 1;
+	}
+
+	// —— password credential API ——
+	setPasswordHash(hash: string): void {
+		this._passwordHash = hash;
+	}
+	passwordHash(): string | null {
+		return this._passwordHash;
+	}
+	hasPassword(): boolean {
+		return this._passwordHash != null;
 	}
 
 	// /** Revoke keycards that match a predicate. */

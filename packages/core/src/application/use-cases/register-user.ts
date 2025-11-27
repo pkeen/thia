@@ -2,7 +2,7 @@ import { UnitOfWork } from "application/ports/uow.port";
 import { Keycard, UserPublic } from "domain/entities";
 import { IdGenerator } from "application/ports/id-generator.port";
 import { Clock } from "application/ports/clock.port";
-import { PasswordHasher } from "application/ports/password-hasher";
+import { PasswordHasher } from "application/ports/password-hasher.port";
 import { EmailAddress } from "../../domain/value-objects/email-address";
 import { User } from "../../domain/entities/user";
 import { asUserId } from "../../domain/primitives";
@@ -42,7 +42,7 @@ export async function registerUser(
 		name: cmd.name,
 		now: deps.clock.now(),
 	});
-	// user.setPasswordHash(await deps.hasher.hash(cmd.password)); // however you model credentials
+	user.setPasswordHash(await deps.hasher.hash(cmd.password)); // however you model credentials
 	await deps.uow.users.save(user);
 	await deps.uow.commit();
 	return user;

@@ -1,5 +1,8 @@
 import { AuthClaims } from "application/claims/auth-claims";
-import { TokenSigner, TokenVerifier } from "application/ports/token-signer";
+import {
+	TokenSigner,
+	TokenVerifier,
+} from "application/ports/token-signer.port";
 
 // infra/jwt/dev-signer.ts (don’t use in prod)
 export class DevTokenSigner implements TokenSigner {

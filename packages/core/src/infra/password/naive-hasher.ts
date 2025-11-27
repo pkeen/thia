@@ -1,4 +1,4 @@
-import { PasswordHasher } from "application/ports/password-hasher";
+import { PasswordHasher } from "application/ports/password-hasher.port";
 
 // infra/password/naive-hasher.ts (dev only)
 export class NaiveHasher implements PasswordHasher {
