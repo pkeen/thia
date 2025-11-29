@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": "./src",
+		"target": "ES2019",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"declaration": true,
+		"declarationMap": true,
+		"declarationDir": "./dist",
+		"jsx": "react-jsx",
+		"strict": true,
+		"esModuleInterop": true,
+		"baseUrl": "./src",
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "**/node_modules/*"]
+}
