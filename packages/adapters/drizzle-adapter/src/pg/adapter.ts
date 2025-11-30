@@ -1,18 +1,60 @@
 import {
-	Adapter,
-	AdapterUser,
-	CreateUser,
-	AdapterAccount,
-} from "@pete_keen/thia-n-core";
+	UserRepository,
+	User,
+	// AdapterUser,
+	// CreateUser,
+	// AdapterAccount,
+} from "@thia/core";
 import { DefaultPostgresSchema, createSchema } from "./schema";
 import { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { eq, getTableColumns, sql } from "drizzle-orm";
+import { rowToSnapshot } from "./snapshots-mappers";
 
 export function PostgresDrizzleAdapter(
 	client: PgDatabase<PgQueryResultHKT, any> | NeonHttpDatabase,
 	schema: DefaultPostgresSchema = createSchema()
-): Adapter {
+): UserRepository {
+	// const getById = async (id: string): Promise<User | null> => {
+	//     const result = await client.select().from(schema.userTable).where(eq(schema.userTable.id, id));
+
+	//     if(result.length === 0) {
+	//         return null;
+	//     }
+
+	//     const user = User.rehydrate(result[0]);
+	//     return user;
+	// }
+
+	const getById: UserRepository["getById"] = async (id) => {
+		const rows = await client
+			.select()
+			.from(schema.userTable)
+			.where(eq(schema.userTable.id, id))
+			.limit(1);
+
+		if (rows.length === 0) return null;
+
+		// base user snapshot
+		const snapshot = rowToSnapshot(rows[0]);
+
+		// hydrate
+		const user = User.rehydrate(snapshot);
+
+		// // if your User needs passwordHash/tokenVersion set via methods:
+		// if (rows[0].passwordHash && (user as any).setPasswordHash) {
+		// 	(user as any).setPasswordHash(rows[0].passwordHash);
+		// }
+		// if (
+		// 	typeof rows[0].tokenVersion === "number" &&
+		// 	(user as any).setTokenVersion
+		// ) {
+		// 	(user as any).setTokenVersion(rows[0].tokenVersion);
+		// }
+
+		return user;
+	};
+
 	// const {
 	// 	userTable,
 	// 	accountTable,

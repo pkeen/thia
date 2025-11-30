@@ -16,11 +16,12 @@ import { MySqlDatabase } from "drizzle-orm/mysql-core";
 import { PgDatabase } from "drizzle-orm/pg-core";
 import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 // import { DefaultMySqlSchema, MySqlDrizzleAdapter } from "./lib/mysql.js"
-import { DefaultPostgresSchema, PostgresDrizzleAdapter } from "./schema";
+import { DefaultPostgresSchema } from "./schema";
+import { PostgresDrizzleAdapter } from "./adapter";
 // import { DefaultSQLiteSchema, SQLiteDrizzleAdapter } from "./lib/sqlite.js"
 import { DefaultSchema, SqlFlavorOptions } from "./utils";
 // import { defineTables } from "./pg/schema";
-import type { Adapter } from "@pete_keen/thia-n-core";
+import type { UserRepository } from "@thia/core";
 // import type { Adapter } from "../../core/adapter/index.js";
 
 export function DrizzleAdapter<SqlFlavor extends SqlFlavorOptions>(

@@ -22,6 +22,7 @@ import {
 	sql,
 	relations,
 } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
 
 /**
  * The type of account.
@@ -216,6 +217,8 @@ export const createSchema = () => {
 };
 
 export type DefaultPostgresSchema = ReturnType<typeof createSchema>;
+
+export type UserRow = InferSelectModel<typeof userTable>;
 
 // type DefaultPostgresColumn<
 // 	T extends {
