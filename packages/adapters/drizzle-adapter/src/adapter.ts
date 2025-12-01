@@ -26,6 +26,8 @@ export function PostgresDrizzleAdapter(
 	//     return user;
 	// }
 
+	const { userTable, accountTable } = schema;
+
 	const getById: UserRepository["getById"] = async (id) => {
 		const rows = await client
 			.select()
@@ -64,9 +66,8 @@ export function PostgresDrizzleAdapter(
 	// 	// authenticatorsTable,
 	// } = createSchema();
 
-	const { userTable, accountTable } = schema;
-
 	return {
+		getById,
 		name: "drizzle-pg",
 		async createUser(user: CreateUser): Promise<AdapterUser> {
 			return client

@@ -1,9 +1,11 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import * as schema from "../pg/schema"; // Adjust if schema lives elsewhere
+// import pg from "pg";
+// ✅ works with bundler resolution
+import * as pg from "pg";
+import * as schema from "../schema"; // Adjust if schema lives elsewhere
 
 // Create a connection pool to the test database running in Docker
-const pool = new Pool({
+const pool = new pg.Pool({
 	host: "localhost",
 	port: 5433,
 	user: "test",

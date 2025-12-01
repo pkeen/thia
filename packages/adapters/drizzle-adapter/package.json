@@ -17,27 +17,34 @@
 	"scripts": {
 		"build": "rollup -c",
 		"dev": "rollup -c -w",
-		"test": "jest"
+		"test": "jest",
+		"db:generate": "drizzle-kit generate",
+		"db:migrate": "tsx src/__tests__/db.migrate.ts"
 	},
 	"dependencies": {
-		"pg": "^8.16.3",
 		"zod": "^3.0.0"
 	},
 	"peerDependencies": {
+		"@thia/core": "workspace:*",
 		"drizzle-orm": "^0.36.3",
-		"typescript": "^5.0.0",
-		"@thia/core": "workspace:*"
+		"typescript": "^5.0.0"
 	},
 	"devDependencies": {
 		"@rollup/plugin-commonjs": "^28.0.1",
 		"@rollup/plugin-multi-entry": "^6.0.1",
 		"@rollup/plugin-node-resolve": "^15.3.0",
 		"@rollup/plugin-typescript": "^12.1.1",
-		"drizzle-orm": "^0.36.3",
-		"drizzle-kit": "^0.24.0",
-		"vitest": "^3.2.4",
+		"@types/node": "^20.19.11",
+		"@types/pg": "^8.15.6",
+		"dotenv": "^17.2.3",
+		"drizzle-kit": "^0.24.2",
+		"drizzle-orm": "^0.36.4",
+		"pg": "^8.16.3",
 		"rollup": "^4.28.1",
+		"testcontainers": "^11.9.0",
+		"ts-node": "^10.9.2",
+		"tsx": "^4.20.6",
 		"typescript": "^5.0.0",
-		"ts-node": "^10.9.2"
+		"vitest": "^3.2.4"
 	}
 }
