@@ -208,13 +208,66 @@ export const usersRelations = relations(userTable, ({ many }) => ({
 	accounts: many(accountTable),
 }));
 
-export const createSchema = () => {
-	return {
-		thiaSchema,
-		userTable,
-		accountTable,
-	};
-};
+// export const createSchema = () => {
+// 	return {
+// 		thiaSchema,
+// 		userTable,
+// 		accountTable,
+// 	};
+// };
+
+export function createSchema(namespace = "thia") {
+	const ns = pgSchema(namespace);
+	const userTable = ns.table(
+		"user",
+		{
+			id: text("id").primaryKey(), // ULID/UUIDv7 from domain
+			email: text("email").unique().notNull(),
+			emailVerified: timestamp("email_verified", {
+				withTimezone: true,
+				mode: "date",
+			}),
+			name: text("name"),
+			image: text("image"),
+			createdAt: timestamp("created_at", {
+				withTimezone: true,
+				mode: "date",
+			}).notNull(),
+			passwordHash: text("password_hash"),
+			tokenVersion: integer("token_version").notNull().default(0), // uvn
+		},
+		(table) => ({
+			emailUniqueIndex: uniqueIndex("emailUniqueIndex").on(
+				lower(table.email)
+			),
+		})
+	);
+
+	const accountTable = ns.table(
+		"account",
+		{
+			userId: text("user_id")
+				.notNull()
+				.references(() => userTable.id, { onDelete: "cascade" }),
+			type: text("type").$type<ProviderType>().notNull(),
+			provider: text("provider").notNull(),
+			providerAccountId: text("provider_account_id").notNull(),
+			refresh_token: text("refresh_token"),
+			access_token: text("access_token"),
+			expires_at: integer("expires_at"),
+			token_type: text("token_type"),
+			scope: text("scope"),
+			id_token: text("id_token"),
+			session_state: text("session_state"),
+		},
+		(account) => ({
+			compositePk: primaryKey({
+				columns: [account.provider, account.providerAccountId],
+			}),
+		})
+	);
+	return { ns, userTable /* ... */ };
+}
 
 export type DefaultPostgresSchema = ReturnType<typeof createSchema>;
 

@@ -2,7 +2,7 @@ import { startTestDb } from "./_helpers/start-db";
 import { describe, it, beforeAll, afterAll, expect } from "vitest";
 
 // import the adapter under test
-import { DrizzlePgUoW } from "../src/uow.drizzle";
+import { DrizzlePgUoW } from "../uow";
 
 // import minimal domain bits from core
 import { User, EmailAddress } from "@thia/core";

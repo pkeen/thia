@@ -16,7 +16,7 @@ import { is } from "drizzle-orm";
 import { PgDatabase } from "drizzle-orm/pg-core";
 // import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 // import { DefaultMySqlSchema, MySqlDrizzleAdapter } from "./lib/mysql.js"
-import { PostgresDrizzleAdapter } from "./adapter";
+import { PostgresDrizzleAdapter } from "./user-repository";
 import { DefaultPostgresSchema } from "schema";
 // import { DefaultSQLiteSchema, SQLiteDrizzleAdapter } from "./lib/sqlite.js"
 import { DefaultSchema, SqlFlavorOptions } from "./utils";

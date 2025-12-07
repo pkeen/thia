@@ -11,7 +11,7 @@ import { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { eq, getTableColumns, sql } from "drizzle-orm";
 import { rowToSnapshot } from "./snapshots-mappers";
 
-export function PostgresDrizzleAdapter(
+export function PostgresUserRepository(
 	client: PgDatabase<PgQueryResultHKT, any> | NeonHttpDatabase,
 	schema: DefaultPostgresSchema = createSchema()
 ): UserRepository {
