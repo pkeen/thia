@@ -1,5 +1,5 @@
 {
-	"name": "@pete_keen/thia-drizzle",
+	"name": "@thia/adapters-drizzle",
 	"version": "0.0.1",
 	"main": "dist/index.mjs",
 	"types": "dist/index.d.ts",
@@ -19,14 +19,16 @@
 		"dev": "rollup -c -w",
 		"test": "vitest run",
 		"db:generate": "drizzle-kit generate",
-		"db:migrate": "tsx src/__tests__/db.migrate.ts"
+		"db:migrate": "tsx src/__tests__/db.migrate.ts",
+		"db:start": "docker run --rm -d -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=thia_drizzle_test -p 5433:5432 --name pg-test postgres:15",
+		"db:stop": "docker stop pg-test"
 	},
 	"dependencies": {
 		"zod": "^3.0.0"
 	},
 	"peerDependencies": {
 		"@thia/core": "workspace:*",
-		"drizzle-orm": "^0.36.3",
+		"drizzle-orm": "^0.45.1",
 		"typescript": "^5.0.0"
 	},
 	"devDependencies": {
@@ -37,8 +39,8 @@
 		"@types/node": "^20.19.11",
 		"@types/pg": "^8.15.6",
 		"dotenv": "^17.2.3",
-		"drizzle-kit": "^0.24.2",
-		"drizzle-orm": "^0.36.4",
+		"drizzle-kit": "^0.31.8",
+		"drizzle-orm": "^0.45.1",
 		"pg": "^8.16.3",
 		"rollup": "^4.28.1",
 		"testcontainers": "^11.9.0",

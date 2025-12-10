@@ -2,7 +2,9 @@ import { drizzle } from "drizzle-orm/node-postgres";
 // import pg from "pg";
 // ✅ works with bundler resolution
 import * as pg from "pg";
-import * as schema from "../schema"; // Adjust if schema lives elsewhere
+import { createSchema } from "../schema"; // Adjust if schema lives elsewhere
+
+const schema = createSchema();
 
 // Create a connection pool to the test database running in Docker
 const pool = new pg.Pool({
@@ -10,7 +12,7 @@ const pool = new pg.Pool({
 	port: 5433,
 	user: "test",
 	password: "test",
-	database: "courses_test",
+	database: "thia_drizzle_test",
 	ssl: false, // Important! Matches drizzle.config.ts to avoid the SSL error
 });
 
