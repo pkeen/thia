@@ -23,6 +23,7 @@ import {
 	relations,
 } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
+import { User, LinkedAccount, Keycard } from "@thia/core";
 
 /**
  * The type of account.
@@ -32,6 +33,10 @@ export type ProviderType = "oauth" | "oidc" | "email" | "webauthn";
 export function lower(email: AnyPgColumn): SQL {
 	return sql`lower(${email})`;
 }
+
+// type UserRow = InferSelectModel<typeof Users>;
+// type AccountRow = InferSelectModel<typeof accounts>;
+// type KeycardRow = InferSelectModel<typeof keycards>;
 
 // // We will make Role a dynamically passed type later
 // export function defineTables(

@@ -57,6 +57,64 @@ export function PostgresUserRepository(
 		return user;
 	};
 
+	// ------- writer -------
+
+	const save = async (user: User): Promise<void> => {
+		const s = user.toSnapshot() as any;
+
+		// upsert user row
+		await client
+			.insert(userTable)
+			.values({
+				id: s.id,
+				email: s.email,
+				emailVerified: s.emailVerified
+					? new Date(s.emailVerified)
+					: null,
+				name: s.name ?? null,
+				image: s.image ?? null,
+				createdAt: new Date(s.createdAt),
+				passwordHash: s.passwordHash ?? null,
+				tokenVersion: s.tokenVersion ?? 0,
+			})
+			.onConflictDoUpdate({
+				target: userTable.id,
+				set: {
+					email: s.email,
+					emailVerified: s.emailVerified
+						? new Date(s.emailVerified)
+						: null,
+					name: s.name ?? null,
+					image: s.image ?? null,
+					passwordHash: s.passwordHash ?? null,
+					tokenVersion: s.tokenVersion ?? 0,
+				},
+			});
+
+		// Replace accounts (simple & safe for now)
+		if (Array.isArray(s.accounts)) {
+			await client
+				.delete(accountTable)
+				.where(eq(accountTable.userId, s.id));
+			if (s.accounts.length) {
+				await client.insert(accountTable).values(
+					s.accounts.map((a: any) => ({
+						userId: s.id,
+						provider: a.provider,
+						providerAccountId: a.providerAccountId,
+						accessToken: a.accessToken ?? null,
+						refreshToken: a.refreshToken ?? null,
+						expiresAt: a.expiresAt ?? null,
+						scope: a.scope ?? null,
+						tokenType: a.tokenType ?? null,
+						idToken: a.idToken ?? null,
+						sessionState: a.sessionState ?? null,
+					}))
+				);
+			}
+		}
+	};
+
 	// const {
 	// 	userTable,
 	// 	accountTable,
@@ -76,6 +134,7 @@ export function PostgresUserRepository(
 				.returning()
 				.then((res) => res[0]) as Promise<AdapterUser>;
 		},
+		save,
 		// /*
 		//  * This is the method that NextAuth uses to create a user
 		//  * It takes an AdapterUser which requires an id field
