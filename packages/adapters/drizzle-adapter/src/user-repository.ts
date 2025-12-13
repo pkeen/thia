@@ -1,6 +1,7 @@
 import {
 	UserRepository,
 	User,
+	EmailAddress,
 	// AdapterUser,
 	// CreateUser,
 	// AdapterAccount,
@@ -10,6 +11,7 @@ import { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { eq, getTableColumns, sql } from "drizzle-orm";
 import { rowToSnapshot } from "./snapshots-mappers";
+import { asUserId } from "@thia/core";
 
 export function PostgresUserRepository(
 	client: PgDatabase<PgQueryResultHKT, any> | NeonHttpDatabase,
@@ -115,6 +117,17 @@ export function PostgresUserRepository(
 		}
 	};
 
+	const getByEmail = async (email: EmailAddress): Promise<User | null> => {
+		const base = await client
+			.select()
+			.from(userTable)
+			.where(eq(userTable.email, email.value))
+			.limit(1);
+
+		if (base.length === 0) return null;
+		return getById(asUserId(base[0].id));
+	};
+
 	// const {
 	// 	userTable,
 	// 	accountTable,
@@ -127,14 +140,16 @@ export function PostgresUserRepository(
 	return {
 		getById,
 		name: "drizzle-pg",
-		async createUser(user: CreateUser): Promise<AdapterUser> {
-			return client
-				.insert(userTable)
-				.values(user)
-				.returning()
-				.then((res) => res[0]) as Promise<AdapterUser>;
-		},
 		save,
+		getByEmail,
+		// async createUser(user: CreateUser): Promise<AdapterUser> {
+		// 	return client
+		// 		.insert(userTable)
+		// 		.values(user)
+		// 		.returning()
+		// 		.then((res) => res[0]) as Promise<AdapterUser>;
+		// },
+
 		// /*
 		//  * This is the method that NextAuth uses to create a user
 		//  * It takes an AdapterUser which requires an id field
@@ -149,37 +164,37 @@ export function PostgresUserRepository(
 		// 		.returning()
 		// 		.then((res) => res[0]) as Promise<AdapterUser>;
 		// },
-		async getUser(userId: string) {
-			return client
-				.select()
-				.from(userTable)
-				.where(eq(userTable.id, userId))
-				.then((res) =>
-					res.length > 0 ? res[0] : null
-				) as Promise<AdapterUser | null>;
-		},
-		async getUserByEmail(email: string) {
-			try {
-				const result = await client
-					.select()
-					.from(userTable)
-					.where(sql`lower(${userTable.email}) = lower(${email})`);
+		// async getUser(userId: string) {
+		// 	return client
+		// 		.select()
+		// 		.from(userTable)
+		// 		.where(eq(userTable.id, userId))
+		// 		.then((res) =>
+		// 			res.length > 0 ? res[0] : null
+		// 		) as Promise<AdapterUser | null>;
+		// },
+		// async getUserByEmail(email: string) {
+		// 	try {
+		// 		const result = await client
+		// 			.select()
+		// 			.from(userTable)
+		// 			.where(sql`lower(${userTable.email}) = lower(${email})`);
 
-				const user = result.length > 0 ? result[0] : null;
+		// 		const user = result.length > 0 ? result[0] : null;
 
-				return user as AdapterUser;
-			} catch (error) {
-				console.error("Error in getUserByEmail:", error);
-				return null;
-			}
-		},
-		async createUserFromAccount(user: CreateUser) {
-			return client
-				.insert(userTable)
-				.values(user)
-				.returning()
-				.then((res) => res[0]) as Promise<AdapterUser>;
-		},
+		// 		return user as AdapterUser;
+		// 	} catch (error) {
+		// 		console.error("Error in getUserByEmail:", error);
+		// 		return null;
+		// 	}
+		// },
+		// async createUserFromAccount(user: CreateUser) {
+		// 	return client
+		// 		.insert(userTable)
+		// 		.values(user)
+		// 		.returning()
+		// 		.then((res) => res[0]) as Promise<AdapterUser>;
+		// },
 		// async createSession(data: {
 		// 	sessionToken: string;
 		// 	userId: string;
@@ -205,23 +220,23 @@ export function PostgresUserRepository(
 		// 		user: AdapterUser;
 		// 	} | null>;
 		// },
-		async updateUser(data: Partial<AdapterUser> & Pick<AdapterUser, "id">) {
-			if (!data.id) {
-				throw new Error("No user id.");
-			}
+		// async updateUser(data: Partial<AdapterUser> & Pick<AdapterUser, "id">) {
+		// 	if (!data.id) {
+		// 		throw new Error("No user id.");
+		// 	}
 
-			const [result] = await client
-				.update(userTable)
-				.set(data)
-				.where(eq(userTable.id, data.id))
-				.returning();
+		// 	const [result] = await client
+		// 		.update(userTable)
+		// 		.set(data)
+		// 		.where(eq(userTable.id, data.id))
+		// 		.returning();
 
-			if (!result) {
-				throw new Error("No user found.");
-			}
+		// 	if (!result) {
+		// 		throw new Error("No user found.");
+		// 	}
 
-			return result;
-		},
+		// 	return result;
+		// },
 		// async updateSession(
 		// 	data: Partial<AdapterSession> & Pick<AdapterSession, "sessionToken">
 		// ) {
@@ -236,48 +251,48 @@ export function PostgresUserRepository(
 		// 	await client.insert(accountsTable).values(data);
 		// },
 
-		async createAccountForUser(user: AdapterUser, account: AdapterAccount) {
-			await client
-				.insert(accountTable)
-				.values({ ...account, userId: user.id });
-		},
+		// async createAccountForUser(user: AdapterUser, account: AdapterAccount) {
+		// 	await client
+		// 		.insert(accountTable)
+		// 		.values({ ...account, userId: user.id });
+		// },
 
-		async updateAccount(account: AdapterAccount) {
-			await client
-				.update(accountTable)
-				.set(account)
-				.where(
-					and(
-						eq(accountTable.provider, account.provider),
-						eq(
-							accountTable.providerAccountId,
-							account.providerAccountId
-						)
-					)
-				);
-		},
+		// async updateAccount(account: AdapterAccount) {
+		// 	await client
+		// 		.update(accountTable)
+		// 		.set(account)
+		// 		.where(
+		// 			and(
+		// 				eq(accountTable.provider, account.provider),
+		// 				eq(
+		// 					accountTable.providerAccountId,
+		// 					account.providerAccountId
+		// 				)
+		// 			)
+		// 		);
+		// },
 
-		async getAccount(
-			provider: string,
-			providerAccountId: string
-		): Promise<AdapterAccount | null> {
-			const account = await client
-				.select()
-				.from(accountTable)
-				.where(
-					and(
-						eq(accountTable.provider, provider),
-						eq(accountTable.providerAccountId, providerAccountId)
-					)
-				)
-				.then((res) => res[0]);
+		// async getAccount(
+		// 	provider: string,
+		// 	providerAccountId: string
+		// ): Promise<AdapterAccount | null> {
+		// 	const account = await client
+		// 		.select()
+		// 		.from(accountTable)
+		// 		.where(
+		// 			and(
+		// 				eq(accountTable.provider, provider),
+		// 				eq(accountTable.providerAccountId, providerAccountId)
+		// 			)
+		// 		)
+		// 		.then((res) => res[0]);
 
-			if (!account) {
-				return null;
-			}
+		// 	if (!account) {
+		// 		return null;
+		// 	}
 
-			return account as AdapterAccount;
-		},
+		// 	return account as AdapterAccount;
+		// },
 
 		// async getUserByAccount(
 		// 	account: Pick<AdapterAccount, "provider" | "providerAccountId">
