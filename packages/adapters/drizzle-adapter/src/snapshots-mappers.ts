@@ -1,5 +1,5 @@
 import type { UserSnapshot } from "@thia/core";
-import type { UserRow } from "../schema";
+import type { UserRow } from "./schema";
 
 export function rowToSnapshot(row: UserRow): UserSnapshot {
 	return {

@@ -7,7 +7,7 @@ import { DrizzlePgUoW } from "../uow";
 import { PostgresUserRepository } from "../user-repository";
 
 // domain bits
-import { User, EmailAddress } from "@thia/core";
+import { User, EmailAddress, LinkedAccount } from "@thia/core";
 import { asUserId } from "@thia/core";
 
 let ctx: Awaited<ReturnType<typeof startTestDb>> | undefined;
@@ -191,5 +191,45 @@ describe("Pg Drizzle UserRepository", () => {
 		await check.rollback();
 		expect(ok).not.toBeNull();
 		expect(fail).toBeNull();
+	});
+
+	it("Loads a user by getByProviderAccount", async () => {
+		if (!ctx) throw new Error("DB not started");
+		const buildRepos = (db: any, s: any) => ({
+			users: PostgresUserRepository(db, s),
+		});
+
+		const uow = new DrizzlePgUoW(ctx.pool, buildRepos);
+		await uow.start();
+		const id = asUserId("01RUNINTXOK000000000000000");
+		const u = User.create({
+			id,
+			email: EmailAddress.create("ok@b.com"),
+			now: new Date(),
+		});
+		const account = LinkedAccount.link({
+			type: "oauth", // <-- required
+			provider: "github",
+			providerAccountId: "123",
+			accessToken: "abc",
+			refreshToken: "def",
+			expiresAt: Math.floor(Date.now() / 1000), // <-- epoch seconds (if your VO expects number)
+			scope: "user",
+			tokenType: "Bearer",
+			idToken: "ghi",
+			sessionState: "jkl",
+		});
+		u.linkAccount(account);
+		await uow.users.save(u);
+		await uow.commit();
+
+		const check = new DrizzlePgUoW(ctx.pool, buildRepos);
+		await check.start();
+		const byProviderAccount = await check.users.getByProviderAccount({
+			provider: "github",
+			providerAccountId: "123",
+		});
+		await check.rollback();
+		expect(byProviderAccount?.id).toEqual(id);
 	});
 });

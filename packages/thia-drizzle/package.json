@@ -28,15 +28,15 @@
 		"typescript": "^5.0.0"
 	},
 	"devDependencies": {
+		"@pete_keen/thia-n-core": "workspace:*",
 		"@rollup/plugin-commonjs": "^28.0.1",
 		"@rollup/plugin-multi-entry": "^6.0.1",
 		"@rollup/plugin-node-resolve": "^15.3.0",
 		"@rollup/plugin-typescript": "^12.1.1",
-		"drizzle-orm": "^0.36.3",
-		"vitest": "^3.2.4",
+		"drizzle-orm": "0.45.1",
 		"rollup": "^4.28.1",
-		"typescript": "^5.0.0",
 		"ts-node": "^10.9.2",
-		"@pete_keen/thia-n-core": "workspace:*"
+		"typescript": "^5.0.0",
+		"vitest": "^3.2.4"
 	}
 }

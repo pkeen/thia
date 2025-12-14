@@ -2,10 +2,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
-	boolean,
 	integer,
-	PgColumn,
-	PgTableWithColumns,
 	uniqueIndex,
 	AnyPgColumn,
 	pgSchema,
@@ -23,12 +20,12 @@ import {
 	relations,
 } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
-import { User, LinkedAccount, Keycard } from "@thia/core";
+import { User, LinkedAccount, Keycard, AccountType } from "@thia/core";
 
 /**
  * The type of account.
  */
-export type ProviderType = "oauth" | "oidc" | "email" | "webauthn";
+// export type ProviderType = "oauth" | "oidc" | "email" | "webauthn";
 
 export function lower(email: AnyPgColumn): SQL {
 	return sql`lower(${email})`;
@@ -249,7 +246,7 @@ export function createSchema(namespace = "thia") {
 			userId: text("user_id")
 				.notNull()
 				.references(() => userTable.id, { onDelete: "cascade" }),
-			type: text("type").$type<ProviderType>().notNull(),
+			type: text("type").$type<AccountType>().notNull(),
 			provider: text("provider").notNull(),
 			providerAccountId: text("provider_account_id").notNull(),
 			refresh_token: text("refresh_token"),
@@ -262,8 +259,16 @@ export function createSchema(namespace = "thia") {
 		},
 		(account) => ({
 			compositePk: primaryKey({
-				columns: [account.provider, account.providerAccountId],
+				columns: [
+					account.userId,
+					account.provider,
+					account.providerAccountId,
+				],
 			}),
+			compositeUniqueIndex: uniqueIndex("compositeUniqueIndex").on(
+				account.provider,
+				account.providerAccountId
+			),
 		})
 	);
 
@@ -276,8 +281,9 @@ export function createSchema(namespace = "thia") {
 export type DefaultPostgresSchema = ReturnType<typeof createSchema>;
 
 export type UserTable = DefaultPostgresSchema["userTable"];
-// export type UserRow = InferSelectModel<UserTable>;
+export type UserRow = InferSelectModel<UserTable>;
 export type AccountTable = DefaultPostgresSchema["accountTable"];
+export type AccountRow = InferSelectModel<AccountTable>;
 
 // type DefaultPostgresColumn<
 // 	T extends {

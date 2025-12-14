@@ -9,6 +9,12 @@ export interface UserRepository {
 	getByEmail(email: EmailAddress): Promise<User | null>;
 	save(user: User): Promise<void>;
 	// addAccount(userId: UserId, account: LinkedAccount): Promise<void>; // or user.save() + repo.save(user)
+
+	// Needed for OAuth / social login:
+	getByProviderAccount(params: {
+		provider: string;
+		providerAccountId: string;
+	}): Promise<User | null>;
 }
 
 // export interface UserRepoPort {

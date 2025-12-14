@@ -1,5 +1,5 @@
 {
-  "id": "2537a900-96cc-46c0-8b38-8ce6e19eab9d",
+  "id": "0cb690f7-4842-4447-a669-cabd77e8e01b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -75,7 +75,29 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "compositeUniqueIndex": {
+          "name": "compositeUniqueIndex",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "account_user_id_user_id_fk": {
           "name": "account_user_id_user_id_fk",
@@ -93,9 +115,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "account_provider_provider_account_id_pk": {
-          "name": "account_provider_provider_account_id_pk",
+        "account_user_id_provider_provider_account_id_pk": {
+          "name": "account_user_id_provider_provider_account_id_pk",
           "columns": [
+            "user_id",
             "provider",
             "provider_account_id"
           ]

@@ -9,7 +9,7 @@ import {
 import { DefaultPostgresSchema, createSchema } from "./schema";
 import { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
-import { eq, getTableColumns, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, sql } from "drizzle-orm";
 import { rowToSnapshot } from "./snapshots-mappers";
 import { asUserId } from "@thia/core";
 
@@ -102,6 +102,7 @@ export function PostgresUserRepository(
 				await client.insert(accountTable).values(
 					s.accounts.map((a: any) => ({
 						userId: s.id,
+						type: a.type,
 						provider: a.provider,
 						providerAccountId: a.providerAccountId,
 						accessToken: a.accessToken ?? null,
@@ -128,6 +129,29 @@ export function PostgresUserRepository(
 		return getById(asUserId(base[0].id));
 	};
 
+	const getByProviderAccount = async ({
+		provider,
+		providerAccountId,
+	}: {
+		provider: string;
+		providerAccountId: string;
+	}): Promise<User | null> => {
+		const a = await client
+			.select()
+			.from(accountTable)
+			.where(
+				and(
+					eq(accountTable.provider, provider),
+					eq(accountTable.providerAccountId, providerAccountId)
+				)
+			)
+			.limit(1);
+
+		console.log("getByProviderAccount", a);
+		if (a.length === 0) return null;
+		return getById(asUserId(a[0].userId)); // reuse hydration path
+	};
+
 	// const {
 	// 	userTable,
 	// 	accountTable,
@@ -142,6 +166,7 @@ export function PostgresUserRepository(
 		name: "drizzle-pg",
 		save,
 		getByEmail,
+		getByProviderAccount,
 		// async createUser(user: CreateUser): Promise<AdapterUser> {
 		// 	return client
 		// 		.insert(userTable)
