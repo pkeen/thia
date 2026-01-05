@@ -41,8 +41,10 @@ export interface OAuthUserInfo {
 }
 
 export interface OAuthProviderPort {
-	/** Provider id, e.g. "github" */
-	id: string;
+	/** Provider key, e.g. "github" */
+	key: string;
+	/** Provider name, e.g. "GitHub" */
+	name: string;
 	/** Begin: build the authorization URL */
 	begin(params: OAuthBeginParams): Promise<OAuthBeginResult>;
 	/** Complete: exchange code->tokens, validate id_token if OIDC, fetch user info */
