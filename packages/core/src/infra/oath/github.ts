@@ -3,12 +3,17 @@ import {
 	OAuthProviderConfig,
 	BaseTokenSchema,
 } from "./oauth-kit";
-import { UserAccountProfile } from "../../types";
-// import { AdapterAccount } from "core/adapter";
 import { z } from "zod";
 import { OAuthProviderPort } from "application/ports/oauth-provider-port";
 
 type ScopeType = "repo" | "repo_status" | "public_repo" | "repo_deployment";
+
+export interface UserAccountProfile {
+	accountId: string;
+	name?: string | null;
+	email: string;
+	image?: string | null;
+}
 
 // interface GitHubTokens {
 // 	access_token: string;

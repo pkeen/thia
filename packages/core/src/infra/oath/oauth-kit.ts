@@ -1,8 +1,17 @@
 // import crypto from "crypto";
-import { UserAccountProfile } from "core/types";
-import { AdapterAccount } from "core/adapter";
+// import { UserAccountProfile } from "core/types";
+// import { AdapterAccount } from "core/adapter";
+import { LinkedAccount } from "domain/value-objects/linked-account";
 import { decodeJwt } from "jose";
 import { z } from "zod";
+import { UserAccountProfile } from "./github";
+
+export interface UserProfile {
+	accountId: string;
+	name?: string | null;
+	email: string;
+	image?: string | null;
+}
 
 export const BaseTokenSchema = z.object({
 	access_token: z.string(),
@@ -125,7 +134,7 @@ export abstract class AbstractBaseOAuthProvider<
 		return { userProfile, adapterAccount };
 	}
 
-	abstract getUserProfile(tokens: TokenType): Promise<UserAccountProfile>;
+	abstract getUserProfile(tokens: TokenType): Promise<UserProfile>;
 
 	protected convertExpiresInToExpiresAt(expiresIn: number): number {
 		return Math.floor(Date.now() / 1000) + expiresIn; // If given as seconds remaining - I also want to store as seconds not miliseconds
@@ -141,27 +150,27 @@ export abstract class AbstractBaseOAuthProvider<
 	protected convertToAdapterAccount(
 		providerAccountId: string,
 		tokens: TokenType
-	): Omit<AdapterAccount, "userId"> {
-		const adapterAccount: Omit<AdapterAccount, "userId"> = {
+	): LinkedAccount {
+		const adapterAccount = LinkedAccount.link({
 			providerAccountId,
 			provider: this.key,
 			type: this.type,
-			access_token: tokens.access_token,
-			token_type: tokens.token_type,
+			accessToken: tokens.access_token,
+			tokenType: tokens.token_type,
 			scope: tokens.scope && tokens.scope,
-			expires_at:
+			expiresAt:
 				tokens.expires_in &&
 				this.convertExpiresInToExpiresAt(tokens.expires_in),
-			refresh_token: tokens.refresh_token,
-			id_token: tokens.id_token,
-			session_state: tokens.session_state,
-		};
+			refreshToken: tokens.refresh_token,
+			idToken: tokens.id_token,
+			sessionState: tokens.session_state,
+		});
 		return adapterAccount;
 	}
 
 	protected abstract convertToUserAccountProfile(
 		profile: ProfileType
-	): UserAccountProfile;
+	): UserProfile;
 }
 
 export abstract class AbstractOAuthProvider<
@@ -176,14 +185,7 @@ export abstract class AbstractOAuthProvider<
 	 * @param tokens
 	 * @returns
 	 */
-	async getUserProfile(tokens: TokenType): Promise<UserAccountProfile> {
-		// return this.convertToUserProfile(
-		// 	await this.fetchPublicProfile(tokens.access_token)
-		// );
-		// const rawProfile = await this.fetchPublicProfile(tokens.access_token);
-		// const profile = this.profileSchema.parse(rawProfile);
-		// return this.convertToUserProfile(profile);
-		// TODO: this works??
+	async getUserProfile(tokens: TokenType): Promise<UserProfile> {
 		return this.convertToUserAccountProfile(
 			this.profileSchema.parse(
 				await this.fetchPublicProfile(tokens.access_token)
@@ -208,7 +210,7 @@ export abstract class AbstractOIDCProvider<
 	 * @param tokens
 	 * @returns
 	 */
-	async getUserProfile(tokens: TokenType): Promise<UserAccountProfile> {
+	async getUserProfile(tokens: TokenType): Promise<UserProfile> {
 		// console.log("OIDC GET USER PROFILE FUNCTION");
 		const rawProfile = this.decodeOIDCToken(tokens.id_token);
 		// console.log("PROFILE:", rawProfile);
@@ -243,8 +245,8 @@ export interface OAuthProviderConfig {
 }
 
 export interface OAuthProviderResponse {
-	userProfile: UserAccountProfile;
-	adapterAccount: Omit<AdapterAccount, "userId">;
+	userProfile: UserProfile;
+	adapterAccount: LinkedAccount;
 }
 
 export const OIDCBaseTokenSchema = z.object({
