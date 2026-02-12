@@ -13,7 +13,8 @@
 		"react": "19.2.1",
 		"react-dom": "19.2.1",
 		"drizzle-kit": "0.31.8",
-		"drizzle-orm": "0.45.1"
+		"drizzle-orm": "0.45.1",
+		"@thia/core": "workspace:*"
 	},
 	"devDependencies": {
 		"@tailwindcss/postcss": "^4",
