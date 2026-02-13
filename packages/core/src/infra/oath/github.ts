@@ -2,9 +2,16 @@ import {
 	AbstractOAuthProvider,
 	OAuthProviderConfig,
 	BaseTokenSchema,
+	convertTokenToCamelCase,
+	NewAbstractOAuthProvider,
 } from "./oauth-kit";
 import { z } from "zod";
-import { OAuthProviderPort } from "application/ports/oauth-provider-port";
+import {
+	OAuthCompleteParams,
+	OAuthProviderPort,
+	OAuthTokenSet,
+	OAuthUserInfo,
+} from "application/ports/oauth-provider-port";
 
 type ScopeType = "repo" | "repo_status" | "public_repo" | "repo_deployment";
 
@@ -141,7 +148,7 @@ type GitHubTokens = z.infer<typeof GitHubTokensSchema>;
 // }
 
 export class GitHub
-	extends AbstractOAuthProvider<ScopeType, GitHubTokens, GitHubUserProfile>
+	extends NewAbstractOAuthProvider<ScopeType, GitHubTokens, GitHubUserProfile>
 	implements OAuthProviderPort
 {
 	readonly key = "github";
@@ -188,17 +195,42 @@ export class GitHub
 		return res;
 	}
 
-	protected convertToUserAccountProfile(
+	public async complete(
+		params: OAuthCompleteParams,
+	): Promise<{ tokens: OAuthTokenSet; user: OAuthUserInfo }> {
+		const tokens = convertTokenToCamelCase(
+			await this.exchangeCodeForTokens(params.code),
+		);
+		const userProfile = await this.fetchPublicProfile(tokens.accessToken);
+		const user = this.convertToOAuthUserInfo(userProfile);
+		return { tokens, user };
+	}
+
+	// protected convertToUserAccountProfile(
+	// 	userProfile: GitHubUserProfile,
+	// ): UserAccountProfile {
+	// 	const userAccountProfile: UserAccountProfile = {
+	// 		accountId: userProfile.id.toString(),
+	// 		name: userProfile.name ?? userProfile.login,
+	// 		email: userProfile.email,
+	// 		image: userProfile.avatar_url,
+	// 	};
+	// 	console.log("userAccountProfile:", userAccountProfile);
+	// 	return userAccountProfile;
+	// }
+
+	protected convertToOAuthUserInfo(
 		userProfile: GitHubUserProfile,
-	): UserAccountProfile {
-		const userAccountProfile: UserAccountProfile = {
-			accountId: userProfile.id.toString(),
+	): OAuthUserInfo {
+		const oAuthUserInfo: OAuthUserInfo = {
+			provider: "github",
+			providerAccountId: userProfile.id.toString(),
 			name: userProfile.name ?? userProfile.login,
 			email: userProfile.email,
 			image: userProfile.avatar_url,
 		};
-		console.log("userAccountProfile:", userAccountProfile);
-		return userAccountProfile;
+		console.log("oAuthUserInfo:", oAuthUserInfo);
+		return oAuthUserInfo;
 	}
 
 	protected async fetchPublicProfile(
@@ -213,7 +245,6 @@ export class GitHub
 		return await response.json();
 	}
 }
-
 
 // export class GitHub extends AbstractOAuthProvider<ScopeType> {
 // 	readonly type = "oauth";

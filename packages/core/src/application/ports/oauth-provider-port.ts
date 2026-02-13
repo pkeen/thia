@@ -7,6 +7,7 @@ export interface OAuthBeginParams {
 	nonce?: string; // OIDC
 	codeChallenge?: string; // PKCE
 	extraAuthParams?: Record<string, string>;
+	scopes: string[];
 }
 
 export interface OAuthBeginResult {
@@ -49,7 +50,7 @@ export interface OAuthProviderPort {
 	begin(params: OAuthBeginParams): Promise<OAuthBeginResult>;
 	/** Complete: exchange code->tokens, validate id_token if OIDC, fetch user info */
 	complete(
-		params: OAuthCompleteParams
+		params: OAuthCompleteParams,
 	): Promise<{ tokens: OAuthTokenSet; user: OAuthUserInfo }>;
 	/** Optional helpers */
 	refresh?(refreshToken: string): Promise<OAuthTokenSet>;
