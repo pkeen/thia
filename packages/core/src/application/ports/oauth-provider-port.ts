@@ -1,13 +1,13 @@
 // application/ports/oauth-provider.port.ts
 export type OAuthScope = string;
 
-export interface OAuthBeginParams {
-	redirectUri: string; // your callback
+export interface OAuthBeginParams<S extends string = string> {
+	redirectUri?: string; // your callback
 	state: string; // CSRF binding
 	nonce?: string; // OIDC
 	codeChallenge?: string; // PKCE
 	extraAuthParams?: Record<string, string>;
-	scopes: string[];
+	scopes?: S[]; // optional additional scopes
 }
 
 export interface OAuthBeginResult {
@@ -41,13 +41,13 @@ export interface OAuthUserInfo {
 	image?: string;
 }
 
-export interface OAuthProviderPort {
+export interface OAuthProviderPort<S extends string = string> {
 	/** Provider key, e.g. "github" */
 	key: string;
 	/** Provider name, e.g. "GitHub" */
 	name: string;
 	/** Begin: build the authorization URL */
-	begin(params: OAuthBeginParams): Promise<OAuthBeginResult>;
+	begin(params: OAuthBeginParams<S>): OAuthBeginResult;
 	/** Complete: exchange code->tokens, validate id_token if OIDC, fetch user info */
 	complete(
 		params: OAuthCompleteParams,
@@ -56,3 +56,5 @@ export interface OAuthProviderPort {
 	refresh?(refreshToken: string): Promise<OAuthTokenSet>;
 	revoke?(accessToken: string): Promise<void>;
 }
+
+export type OAuthProvidersPort = Record<string, OAuthProviderPort>;
