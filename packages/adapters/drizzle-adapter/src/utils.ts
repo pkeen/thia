@@ -6,7 +6,7 @@ import { MySqlDatabase } from "drizzle-orm/mysql-core";
 import { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 // import { DefaultMySqlSchema } from "./mysql.js";
-import { DefaultPostgresSchema } from "./postgres";
+import { DefaultPostgresSchema } from "./schema";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
 // import { DefaultSQLiteSchema } from "./sqlite.js";
 

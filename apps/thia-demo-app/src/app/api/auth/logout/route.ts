@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { authManager } from "@/auth";
+import { thia as authManager } from "@/thia";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/session";
 import { commitSession } from "@/session";

@@ -9,9 +9,9 @@ function absoluteUrl(path: string, request: NextRequest) {
 
 export const GET = async (
 	request: NextRequest,
-	{ params }: { params: { provider: string } }
+	{ params }: { params: Promise<{ provider: string }> }
 ) => {
-	const provider = params.provider;
+	const provider = (await params).provider;
 	console.log("PROVIDER:", provider);
 
 	const url = new URL(request.url);
