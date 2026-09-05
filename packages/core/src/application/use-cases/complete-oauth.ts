@@ -1,13 +1,15 @@
-import { AuthStrategyPort } from "../../ports/auth-strategy";
-import { IdentityProviderPort } from "../../ports/identity-provider";
-import { LoggerPort } from "../../ports/logger";
-import { UserRepoPort } from "../ports/user-repo.port";
-import { Keycard, User, UserPublic } from "../../entities";
-import { AppError } from "../../entities/error";
-import { Result } from "../entities/utilities";
-import { OAuthProvidersPort } from "../ports/oauth-provider.port";
+import { ProviderRegistryPort } from "../ports/provider-registry-port";
+import { AuthStateStore } from "../ports/state-store-port";
+import { UnitOfWork } from "../ports/uow.port";
+import { IdGenerator } from "../ports/id-generator.port";
+import { Clock } from "../ports/clock.port";
+import { TokenSigner } from "../ports/token-signer.port";
+import { Keycard, User, UserPublic } from "../../domain/entities";
+import { LinkedAccount } from "../../domain/value-objects/linked-account";
+import { EmailAddress } from "../../domain/value-objects/email-address";
+import { asUserId } from "../../domain/primitives";
+import { issueAccessToken } from "./issue-access-token";
 
-// Use-case (application layer)
 export type LoginOutput<E = {}> = {
 	user: UserPublic & E;
 	keycards: Keycard[];
@@ -15,129 +17,117 @@ export type LoginOutput<E = {}> = {
 
 const sanitizeUser = (user: User): UserPublic => ({
 	id: user.id,
-	name: user.name,
-	email: user.email,
-	image: user.image,
+	name: user.name.value,
+	email: user.email.value,
+	image: user.image.value,
 });
 
-// application/errors.ts
-export type LoginErrorCode =
-	| "PROVIDER_ERROR" // mapped from IdentityProviderError
-	| "USER_NOT_FOUND"
-	| "ACCOUNT_LINK_CONFLICT"
-	| "SESSION_ISSUE"
-	| "UNKNOWN";
+/**
+ * GitHub (and most OAuth providers) may not return a public email address.
+ * The domain User requires one, so synthesize a stable, non-deliverable
+ * placeholder scoped to the provider account rather than block login.
+ */
+const resolveEmail = (provider: string, providerAccountId: string, email?: string) =>
+	EmailAddress.create(email ?? `${provider}-${providerAccountId}@users.noreply.thia.local`);
 
-export type LoginError = AppError<LoginErrorCode>;
-
-// export async function completeOAuth<E = {}>(input: {
-// 	provider: string; // TODO String for now - enum or union later
-// 	code: string;
-// 	enrichUser: (u: UserPublic) => Promise<E> | E;
-// 	ports: {
-// 		signInSystem: IdentityProviderPort;
-// 		userRegistry: UserRepoPort;
-// 		authStrategy: AuthStrategyPort;
-// 		logger: LoggerPort;
-// 		callbacks?: { onUserCreated?: (u: User) => void | Promise<void> };
-// 	};
-// }): Promise<Result<LoginOutput<E>, LoginError>> {
-// 	const { signInSystem, userRegistry, authStrategy, logger, callbacks } =
-// 		input.ports;
-
-// 	const r = await signInSystem.completeOAuth(input.provider, input.code);
-// 	if (r.ok == false) {
-// 		input.ports.logger.error("Sign in failed", { error: r.error });
-// 		return { ok: false, error: r.error || "PROVIDER_ERROR" };
-// 	}
-// 	// NOTE: no "redirect" case here — that’s handled by startLogin()
-
-// 	const { profile, account: adapterAccount } = r.value;
-// 	let user = await userRegistry.getUserByEmail(profile.email);
-
-// 	if (!user) {
-// 		user = await userRegistry.createUser(profile);
-// 		await userRegistry.createAccountForUser(user, adapterAccount);
-// 		await callbacks?.onUserCreated?.(user);
-// 	} else {
-// 		const account = await userRegistry.getAccount(
-// 			adapterAccount.provider,
-// 			adapterAccount.providerAccountId
-// 		);
-// 		if (account) await userRegistry.updateAccount(adapterAccount);
-// 		else await userRegistry.createAccountForUser(user, adapterAccount);
-// 	}
-
-// 	const publicUser = sanitizeUser(user);
-// 	const extra = await input.enrichUser(publicUser);
-// 	const keycards = await authStrategy.createKeyCards({
-// 		...publicUser,
-// 		...extra,
-// 	});
-
-// 	return { ok: true, value: { user: { ...publicUser, ...extra }, keycards } };
-// }
-
-export async function completeOAuth<E = {}>(input: {
-	provider: string; // TODO String for now - enum or union later
+export type CompleteOAuthInput = {
+	provider: string;
 	code: string;
-	redirectUri: string;
 	state: string;
-	codeVerifier?: string;
-	enrichUser: (u: UserPublic) => Promise<E> | E;
-	ports: {
-		oauthProviders: OAuthProvidersPort;
-		userRegistry: UserRepoPort;
-		authStrategy: AuthStrategyPort;
-		logger: LoggerPort;
-		callbacks?: { onUserCreated?: (u: User) => void | Promise<void> };
-	};
-}): Promise<Result<LoginOutput<E>, LoginError>> {
-	const { oauthProviders, userRegistry, authStrategy, logger, callbacks } =
-		input.ports;
+};
 
-	const provider = oauthProviders[input.provider];
-	if (!provider) {
-		throw new Error("PROVIDER_NOT_FOUND");
-	}
+export type CompleteOAuthDeps<E = {}> = {
+	registry: ProviderRegistryPort;
+	stateStore: AuthStateStore;
+	uow: UnitOfWork;
+	ids: IdGenerator;
+	clock: Clock;
+	signer: TokenSigner;
+	issuer: string;
+	audience: string;
+	ttlSec: number;
+	policyVersion: number;
+	enrichUser?: (u: UserPublic) => Promise<E> | E;
+	callbacks?: { onUserCreated?: (u: User) => void | Promise<void> };
+};
 
-	// Step 1: OAuth callback (with code)
-	const { user, tokens } = await provider.complete({
-		redirectUri: input.redirectUri,
+export async function completeOAuth<E = {}>(
+	deps: CompleteOAuthDeps<E>,
+	input: CompleteOAuthInput
+): Promise<LoginOutput<E>> {
+	const transient = await deps.stateStore.consume(input.state);
+	if (!transient) throw new Error("INVALID_STATE");
+	if (transient.providerId !== input.provider) throw new Error("INVALID_STATE");
+
+	const provider = deps.registry.get(input.provider);
+	if (!provider) throw new Error("PROVIDER_NOT_FOUND");
+
+	const { user: oauthUser } = await provider.complete({
+		redirectUri: transient.redirectUri,
 		code: input.code,
 		state: input.state,
-		codeVerifier: input.codeVerifier,
+		codeVerifier: transient.codeVerifier,
 	});
 
-	// const r = await oauthProviders.completeOAuth(input.provider, input.code);
-	// if (r.ok == false) {
-	// 	input.ports.logger.error("Sign in failed", { error: r.error });
-	// 	return { ok: false, error: r.error || "PROVIDER_ERROR" };
-	// }
-	// NOTE: no "redirect" case here — that’s handled by startLogin()
+	const linkedAccount = LinkedAccount.link({
+		type: "oauth",
+		provider: oauthUser.provider,
+		providerAccountId: oauthUser.providerAccountId,
+	});
 
-	// const { profile, account: adapterAccount } = r.value;
-	let dbUser = await userRegistry.getByEmail(user.email);
+	let user = await deps.uow.users.getByProviderAccount({
+		provider: oauthUser.provider,
+		providerAccountId: oauthUser.providerAccountId,
+	});
+	let isNewUser = false;
 
-	if (!dbUser) {
-		await userRegistry.save(user);
-		// await userRegistry.createAccountForUser(dbUser, user);
-		await callbacks?.onUserCreated?.(dbUser);
-	} else {
-		const account = await userRegistry.getByProviderAccount({
-			provider: user.provider,
-			providerAccountId: user.providerAccountId,
-		});
-		if (account) await userRegistry.save(user);
-		else await userRegistry.save(user);
+	if (!user) {
+		const email = resolveEmail(
+			oauthUser.provider,
+			oauthUser.providerAccountId,
+			oauthUser.email
+		);
+		const existingByEmail = await deps.uow.users.getByEmail(email);
+
+		if (existingByEmail) {
+			existingByEmail.linkAccount(linkedAccount);
+			user = existingByEmail;
+		} else {
+			user = User.create({
+				id: asUserId(deps.ids.userId()),
+				email,
+				name: oauthUser.name,
+				image: oauthUser.image,
+				now: deps.clock.now(),
+			});
+			user.linkAccount(linkedAccount);
+			isNewUser = true;
+		}
 	}
 
-	const publicUser = sanitizeUser(user);
-	const extra = await input.enrichUser(publicUser);
-	const keycards = await authStrategy.createKeyCards({
-		...publicUser,
-		...extra,
-	});
+	await deps.uow.users.save(user);
+	await deps.uow.commit();
 
-	return { ok: true, value: { user: { ...publicUser, ...extra }, keycards } };
+	if (isNewUser) await deps.callbacks?.onUserCreated?.(user);
+
+	const keycard = await issueAccessToken(
+		{
+			signer: deps.signer,
+			clock: deps.clock,
+			ids: deps.ids,
+			policyVersion: deps.policyVersion,
+			issuer: deps.issuer,
+			audience: deps.audience,
+			ttlSec: deps.ttlSec,
+		},
+		user
+	);
+
+	const publicUser = sanitizeUser(user);
+	const extra = deps.enrichUser ? await deps.enrichUser(publicUser) : ({} as E);
+
+	return {
+		user: { ...publicUser, ...extra },
+		keycards: [keycard],
+	};
 }

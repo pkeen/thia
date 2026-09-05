@@ -3,7 +3,7 @@
 // 	"emailVerified" | "createdAt" | "id"
 // >;
 
-export type UserPublic = Omit<UserSnapshot, "emailVerified" | "createdAt">;
+export type UserPublic = Pick<UserSnapshot, "id" | "email" | "name" | "image">;
 
 // --- Imports from your domain (adjust paths as needed) ---
 import { Provider, ProviderAccountId, UserId } from "../primitives"; // type Brand<string,"UserId">

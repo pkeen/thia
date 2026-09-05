@@ -4,3 +4,6 @@ export * from "./id-generator.port";
 export * from "./password-hasher.port";
 export * from "./token-signer.port";
 export * from "./uow.port";
+export * from "./oauth-provider-port";
+export * from "./provider-registry-port";
+export * from "./state-store-port";
