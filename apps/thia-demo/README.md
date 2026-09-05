@@ -1,3 +1,5 @@
+> **Deprecated:** this app depends on the legacy `@pete_keen/thia-n-core` package but has no auth wiring implemented. Active development has moved to `packages/core` (`@thia/core`) and `apps/thia-clean-builder-app`.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

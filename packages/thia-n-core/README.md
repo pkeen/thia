@@ -1,0 +1,1 @@
+> **Deprecated:** this is the legacy `@pete_keen/thia-n-core` implementation, superseded by the clean-architecture rewrite in `packages/core` (`@thia/core`). Kept as a working reference (used by `apps/thia-demo-app`) until the new core reaches parity — not the target for new work.

@@ -1,0 +1,1 @@
+> **Deprecated:** this is the Drizzle adapter for the legacy `packages/thia-n-core`. The current-generation adapter is `packages/adapters/drizzle-adapter`, which implements `packages/core`'s (`@thia/core`) `UnitOfWork`/`UserRepository` ports. Kept as a reference until `thia-n-core` is retired — not the target for new work.

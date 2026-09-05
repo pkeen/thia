@@ -1,3 +1,5 @@
+> **Deprecated:** this app runs on the legacy `@pete_keen/thia-n-core` package. Active development has moved to `packages/core` (`@thia/core`) and `apps/thia-clean-builder-app`. Kept as a working reference for the OAuth flow shape only.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
