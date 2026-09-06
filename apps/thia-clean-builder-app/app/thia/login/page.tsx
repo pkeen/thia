@@ -9,7 +9,7 @@ export default function LoginPage() {
 			}}
 		>
 			<a
-				href="/api/auth/github"
+				href="/api/thia/login/github"
 				style={{
 					display: "inline-block",
 					padding: "12px 20px",

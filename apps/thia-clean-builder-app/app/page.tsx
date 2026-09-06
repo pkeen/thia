@@ -29,7 +29,7 @@ export default async function Home() {
 			{user ? (
 				<>
 					<p>Signed in as {user.email.value}</p>
-					<form action="/api/auth/logout" method="post">
+					<form action="/api/thia/logout" method="post">
 						<button type="submit">Sign out</button>
 					</form>
 				</>

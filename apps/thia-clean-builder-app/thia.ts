@@ -1,8 +1,8 @@
+import type { UnitOfWork } from "@thia/core";
 import {
 	GitHub,
 	SimpleProviderRegistry,
 	InMemoryStateStore,
-	InMemoryUoW,
 	SystemClock,
 	UlidIdGenerator,
 	DevTokenSigner,
@@ -10,12 +10,20 @@ import {
 	beginOAuth,
 	completeOAuth,
 } from "@thia/core";
+import { PostgresUserRepository } from "@thia/adapters-drizzle";
+import db from "@/db";
 
-// NOTE (MVP): in-memory UoW + state store. Swap for @thia/adapters-drizzle's
-// PostgresUserRepository once a migration exists for this app's database.
+// NOTE (MVP): state store is still in-memory (fine - it's a short-lived CSRF
+// token, single dev process). User storage is real Postgres via the drizzle
+// adapter; commit/rollback are no-ops since each repo call is already a
+// single statement (no multi-step transaction to wrap yet).
 const clock = new SystemClock();
 const ids = new UlidIdGenerator(clock);
-const uow = new InMemoryUoW();
+const uow: UnitOfWork = {
+	users: PostgresUserRepository(db),
+	async commit() {},
+	async rollback() {},
+};
 const stateStore = new InMemoryStateStore();
 const signer = new DevTokenSigner();
 const verifier = new DevTokenVerifier();
