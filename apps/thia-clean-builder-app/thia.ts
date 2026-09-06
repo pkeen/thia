@@ -5,8 +5,8 @@ import {
 	InMemoryStateStore,
 	SystemClock,
 	UlidIdGenerator,
-	DevTokenSigner,
-	DevTokenVerifier,
+	HmacTokenSigner,
+	HmacTokenVerifier,
 	beginOAuth,
 	completeOAuth,
 } from "@thia/core";
@@ -25,8 +25,23 @@ const uow: UnitOfWork = {
 	async rollback() {},
 };
 const stateStore = new InMemoryStateStore();
-const signer = new DevTokenSigner();
-const verifier = new DevTokenVerifier();
+
+const tokenConfig = {
+	issuer: "thia-clean-builder-app",
+	audience: "thia-clean-builder-app",
+	ttlSec: 60 * 30,
+	policyVersion: 1,
+};
+
+// AUTH_SECRET must be a real random secret (>= 32 bytes), e.g.
+// `openssl rand -base64 32` - HmacTokenSigner/Verifier throw immediately if
+// it's missing or too short, so a misconfigured deploy fails at startup.
+const authSecret = process.env.AUTH_SECRET!;
+const signer = new HmacTokenSigner(authSecret);
+const verifier = new HmacTokenVerifier(authSecret, {
+	issuer: tokenConfig.issuer,
+	audience: tokenConfig.audience,
+});
 
 const registry = new SimpleProviderRegistry({
 	github: new GitHub({
@@ -35,13 +50,6 @@ const registry = new SimpleProviderRegistry({
 		redirectUri: process.env.GITHUB_REDIRECT_URI!,
 	}),
 });
-
-const tokenConfig = {
-	issuer: "thia-clean-builder-app",
-	audience: "thia-clean-builder-app",
-	ttlSec: 60 * 30,
-	policyVersion: 1,
-};
 
 export const thia = {
 	uow,
