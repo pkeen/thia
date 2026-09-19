@@ -1,17 +1,9 @@
-import {
-	UserRepository,
-	User,
-	EmailAddress,
-	// AdapterUser,
-	// CreateUser,
-	// AdapterAccount,
-} from "@thia/core";
+import { UserRepository, User, EmailAddress, asUserId } from "@thia/core";
 import { DefaultPostgresSchema, createSchema } from "./schema";
 import { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
-import { and, eq, getTableColumns, sql } from "drizzle-orm";
-import { rowToSnapshot } from "./snapshots-mappers";
-import { asUserId } from "@thia/core";
+import { and, eq } from "drizzle-orm";
+import { accountSnapshotToColumns, rowToSnapshot } from "./snapshots-mappers";
 
 export function PostgresUserRepository(
 	client: PgDatabase<PgQueryResultHKT, any> | NeonHttpDatabase,
@@ -22,45 +14,31 @@ export function PostgresUserRepository(
 	const getById: UserRepository["getById"] = async (id) => {
 		const rows = await client
 			.select()
-			.from(schema.userTable)
-			.where(eq(schema.userTable.id, id))
+			.from(userTable)
+			.where(eq(userTable.id, id))
 			.limit(1);
 
 		if (rows.length === 0) return null;
 
-		// base user snapshot
-		const snapshot = rowToSnapshot(rows[0]);
+		// The user aggregate owns its linked accounts, so they must be loaded
+		// with it - save() writes back exactly what the aggregate holds.
+		const accounts = await client
+			.select()
+			.from(accountTable)
+			.where(eq(accountTable.userId, id));
 
-		// hydrate
-		const user = User.rehydrate(snapshot);
-
-		// // if your User needs passwordHash/tokenVersion set via methods:
-		// if (rows[0].passwordHash && (user as any).setPasswordHash) {
-		// 	(user as any).setPasswordHash(rows[0].passwordHash);
-		// }
-		// if (
-		// 	typeof rows[0].tokenVersion === "number" &&
-		// 	(user as any).setTokenVersion
-		// ) {
-		// 	(user as any).setTokenVersion(rows[0].tokenVersion);
-		// }
-
-		return user;
+		return User.rehydrate(rowToSnapshot(rows[0], accounts));
 	};
 
-	// ------- writer -------
 	const save: UserRepository["save"] = async (user: User): Promise<void> => {
-		const s = user.toSnapshot() as any;
+		const s = user.toSnapshot();
 
-		// upsert user row
 		await client
 			.insert(userTable)
 			.values({
 				id: s.id,
 				email: s.email,
-				emailVerified: s.emailVerified
-					? new Date(s.emailVerified)
-					: null,
+				emailVerified: s.emailVerified ? new Date(s.emailVerified) : null,
 				name: s.name ?? null,
 				image: s.image ?? null,
 				createdAt: new Date(s.createdAt),
@@ -81,28 +59,61 @@ export function PostgresUserRepository(
 				},
 			});
 
-		// Replace accounts (simple & safe for now)
-		if (Array.isArray(s.accounts)) {
+		// Sync accounts to match the aggregate. Writes happen before deletes so
+		// that, without a surrounding transaction (e.g. the neon-http driver),
+		// a failure partway through can leave a stale link behind but can never
+		// drop one the user still has.
+		const accounts = s.accounts ?? [];
+		const existing = await client
+			.select({
+				provider: accountTable.provider,
+				providerAccountId: accountTable.providerAccountId,
+			})
+			.from(accountTable)
+			.where(eq(accountTable.userId, s.id));
+
+		const key = (a: { provider: string; providerAccountId: string }) =>
+			`${a.provider}\u0000${a.providerAccountId}`;
+		const existingKeys = new Set(existing.map(key));
+		const desiredKeys = new Set(accounts.map(key));
+
+		for (const account of accounts) {
+			const columns = accountSnapshotToColumns(account);
+			if (existingKeys.has(key(account))) {
+				await client
+					.update(accountTable)
+					.set(columns)
+					.where(
+						and(
+							eq(accountTable.userId, s.id),
+							eq(accountTable.provider, account.provider),
+							eq(accountTable.providerAccountId, account.providerAccountId)
+						)
+					);
+			} else {
+				// No upsert on purpose: if this provider account already belongs
+				// to a different user, the unique index rejects it rather than
+				// silently reassigning someone else's login.
+				await client.insert(accountTable).values({
+					userId: s.id,
+					provider: account.provider,
+					providerAccountId: account.providerAccountId,
+					...columns,
+				});
+			}
+		}
+
+		for (const stale of existing) {
+			if (desiredKeys.has(key(stale))) continue;
 			await client
 				.delete(accountTable)
-				.where(eq(accountTable.userId, s.id));
-			if (s.accounts.length) {
-				await client.insert(accountTable).values(
-					s.accounts.map((a: any) => ({
-						userId: s.id,
-						type: a.type,
-						provider: a.provider,
-						providerAccountId: a.providerAccountId,
-						accessToken: a.accessToken ?? null,
-						refreshToken: a.refreshToken ?? null,
-						expiresAt: a.expiresAt ?? null,
-						scope: a.scope ?? null,
-						tokenType: a.tokenType ?? null,
-						idToken: a.idToken ?? null,
-						sessionState: a.sessionState ?? null,
-					}))
+				.where(
+					and(
+						eq(accountTable.userId, s.id),
+						eq(accountTable.provider, stale.provider),
+						eq(accountTable.providerAccountId, stale.providerAccountId)
+					)
 				);
-			}
 		}
 	};
 
@@ -110,7 +121,7 @@ export function PostgresUserRepository(
 		email: EmailAddress
 	): Promise<User | null> => {
 		const base = await client
-			.select()
+			.select({ id: userTable.id })
 			.from(userTable)
 			.where(eq(userTable.email, email.value))
 			.limit(1);
@@ -119,15 +130,12 @@ export function PostgresUserRepository(
 		return getById(asUserId(base[0].id));
 	};
 
-	const getByProviderAccount = async ({
+	const getByProviderAccount: UserRepository["getByProviderAccount"] = async ({
 		provider,
 		providerAccountId,
-	}: {
-		provider: string;
-		providerAccountId: string;
-	}): Promise<User | null> => {
-		const a = await client
-			.select()
+	}) => {
+		const rows = await client
+			.select({ userId: accountTable.userId })
 			.from(accountTable)
 			.where(
 				and(
@@ -137,9 +145,8 @@ export function PostgresUserRepository(
 			)
 			.limit(1);
 
-		console.log("getByProviderAccount", a);
-		if (a.length === 0) return null;
-		return getById(asUserId(a[0].userId)); // reuse hydration path
+		if (rows.length === 0) return null;
+		return getById(asUserId(rows[0].userId));
 	};
 
 	return {

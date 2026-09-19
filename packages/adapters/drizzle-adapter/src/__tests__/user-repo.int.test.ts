@@ -232,4 +232,167 @@ describe("Pg Drizzle UserRepository", () => {
 		await check.rollback();
 		expect(byProviderAccount?.id).toEqual(id);
 	});
+
+	it("loads linked accounts, with their tokens, when hydrating a user", async () => {
+		if (!ctx) throw new Error("DB not started");
+		const buildRepos = (db: any, s: any) => ({
+			users: PostgresUserRepository(db, s),
+		});
+
+		const id = asUserId("01HYDRATEACCOUNTS000000000");
+		const u = User.create({
+			id,
+			email: EmailAddress.create("hydrate@b.com"),
+			now: new Date(),
+		});
+		u.linkAccount(
+			LinkedAccount.link({
+				type: "oauth",
+				provider: "github",
+				providerAccountId: "gh-1",
+				accessToken: "abc",
+				refreshToken: "def",
+				expiresAt: 1700000000,
+				scope: "user",
+				tokenType: "Bearer",
+				idToken: "ghi",
+				sessionState: "jkl",
+			})
+		);
+		const write = new DrizzlePgUoW(ctx.pool, buildRepos);
+		await write.runInTx((tx) => tx.users.save(u));
+
+		const read = new DrizzlePgUoW(ctx.pool, buildRepos);
+		const loaded = await read.runInTx((tx) => tx.users.getById(id));
+
+		expect(loaded?.accounts).toHaveLength(1);
+		const [acc] = loaded!.accounts;
+		expect(acc.provider).toBe("github");
+		expect(acc.providerAccountId).toBe("gh-1");
+		expect(acc.accessToken).toBe("abc");
+		expect(acc.refreshToken).toBe("def");
+		expect(acc.expiresAt).toBe(1700000000);
+		expect(acc.tokenType).toBe("Bearer");
+		expect(acc.idToken).toBe("ghi");
+		expect(acc.sessionState).toBe("jkl");
+	});
+
+	it("keeps existing linked accounts when a second provider is linked", async () => {
+		if (!ctx) throw new Error("DB not started");
+		const buildRepos = (db: any, s: any) => ({
+			users: PostgresUserRepository(db, s),
+		});
+
+		const id = asUserId("01SECONDPROVIDER000000000");
+		const email = EmailAddress.create("two@b.com");
+
+		// first sign-in: GitHub
+		const first = User.create({ id, email, now: new Date() });
+		first.linkAccount(
+			LinkedAccount.link({
+				type: "oauth",
+				provider: "github",
+				providerAccountId: "gh-2",
+			})
+		);
+		await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx((tx) =>
+			tx.users.save(first)
+		);
+
+		// second sign-in: Google, found by email - mirrors completeOAuth
+		await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx(async (tx) => {
+			const existing = await tx.users.getByEmail(email);
+			existing!.linkAccount(
+				LinkedAccount.link({
+					type: "oauth",
+					provider: "google",
+					providerAccountId: "go-2",
+				})
+			);
+			await tx.users.save(existing!);
+		});
+
+		const lookups = await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx(
+			async (tx) => ({
+				byGithub: await tx.users.getByProviderAccount({
+					provider: "github",
+					providerAccountId: "gh-2",
+				}),
+				byGoogle: await tx.users.getByProviderAccount({
+					provider: "google",
+					providerAccountId: "go-2",
+				}),
+			})
+		);
+
+		expect(lookups.byGithub?.id).toEqual(id);
+		expect(lookups.byGoogle?.id).toEqual(id);
+		expect(lookups.byGoogle?.accounts.map((a) => a.provider).sort()).toEqual(
+			["github", "google"]
+		);
+	});
+
+	it("removes an unlinked account on save", async () => {
+		if (!ctx) throw new Error("DB not started");
+		const buildRepos = (db: any, s: any) => ({
+			users: PostgresUserRepository(db, s),
+		});
+
+		const id = asUserId("01UNLINKACCOUNT0000000000");
+		const u = User.create({
+			id,
+			email: EmailAddress.create("unlink@b.com"),
+			now: new Date(),
+		});
+		u.linkAccount(
+			LinkedAccount.link({ type: "oauth", provider: "github", providerAccountId: "gh-3" })
+		);
+		u.linkAccount(
+			LinkedAccount.link({ type: "oauth", provider: "google", providerAccountId: "go-3" })
+		);
+		await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx((tx) => tx.users.save(u));
+
+		await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx(async (tx) => {
+			const loaded = await tx.users.getById(id);
+			loaded!.unlinkAccount("github", "gh-3");
+			await tx.users.save(loaded!);
+		});
+
+		const after = await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx((tx) =>
+			tx.users.getById(id)
+		);
+		expect(after?.accounts.map((a) => a.provider)).toEqual(["google"]);
+	});
+
+	it("refuses to link a provider account that belongs to another user", async () => {
+		if (!ctx) throw new Error("DB not started");
+		const buildRepos = (db: any, s: any) => ({
+			users: PostgresUserRepository(db, s),
+		});
+		const gh = () =>
+			LinkedAccount.link({ type: "oauth", provider: "github", providerAccountId: "gh-owned" });
+
+		const owner = User.create({
+			id: asUserId("01OWNERUSER00000000000000"),
+			email: EmailAddress.create("owner@b.com"),
+			now: new Date(),
+		});
+		owner.linkAccount(gh());
+		await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx((tx) => tx.users.save(owner));
+
+		const intruder = User.create({
+			id: asUserId("01INTRUDERUSER00000000000"),
+			email: EmailAddress.create("intruder@b.com"),
+			now: new Date(),
+		});
+		intruder.linkAccount(gh());
+		await expect(
+			new DrizzlePgUoW(ctx.pool, buildRepos).runInTx((tx) => tx.users.save(intruder))
+		).rejects.toThrow();
+
+		const stillOwner = await new DrizzlePgUoW(ctx.pool, buildRepos).runInTx((tx) =>
+			tx.users.getByProviderAccount({ provider: "github", providerAccountId: "gh-owned" })
+		);
+		expect(stillOwner?.id).toEqual(owner.id);
+	});
 });
