@@ -7,8 +7,10 @@ export async function GET(
 ) {
 	const { provider } = await params;
 
-	// Single-provider MVP: redirect URI comes from provider-specific env config.
-	const redirectUri = process.env.GITHUB_REDIRECT_URI!;
+	const redirectUri = thia.redirectUriFor(provider);
+	if (!redirectUri) {
+		return NextResponse.json({ error: "unknown_provider" }, { status: 400 });
+	}
 
 	try {
 		const { authorizationUrl } = await thia.beginLogin(provider, redirectUri);

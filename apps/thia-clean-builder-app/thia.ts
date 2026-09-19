@@ -1,6 +1,7 @@
 import type { UnitOfWork } from "@thia/core";
 import {
 	GitHub,
+	Google,
 	SimpleProviderRegistry,
 	InMemoryStateStore,
 	SystemClock,
@@ -43,16 +44,30 @@ const verifier = new HmacTokenVerifier(authSecret, {
 	audience: tokenConfig.audience,
 });
 
+const redirectUris: Record<string, string> = {
+	github: process.env.GITHUB_REDIRECT_URI!,
+	google: process.env.GOOGLE_REDIRECT_URI!,
+};
+
 const registry = new SimpleProviderRegistry({
 	github: new GitHub({
 		clientId: process.env.GITHUB_CLIENT_ID!,
 		clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-		redirectUri: process.env.GITHUB_REDIRECT_URI!,
+		redirectUri: redirectUris.github,
+	}),
+	google: new Google({
+		clientId: process.env.GOOGLE_CLIENT_ID!,
+		clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+		redirectUri: redirectUris.google,
 	}),
 });
 
 export const thia = {
 	uow,
+
+	redirectUriFor(provider: string): string | undefined {
+		return redirectUris[provider];
+	},
 
 	async beginLogin(provider: string, redirectUri: string) {
 		return beginOAuth({ registry, stateStore }, { provider, redirectUri });

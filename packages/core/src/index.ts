@@ -11,3 +11,4 @@ export * from "./infra/memory/in-memory-uow";
 export * from "./infra/state/in-memory-state-store";
 export * from "./infra/registry/simple-provider-registry";
 export * from "./infra/oath/github";
+export * from "./infra/oath/google";
