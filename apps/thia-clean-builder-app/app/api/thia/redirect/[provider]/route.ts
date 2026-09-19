@@ -24,6 +24,14 @@ export async function GET(
 		setSessionCookie(response, keycards[0]);
 		return response;
 	} catch (e) {
+		if (e instanceof Error && e.message === "ACCOUNT_LINK_CONFLICT") {
+			// Not a failure to log: the email belongs to an existing account
+			// that we won't link automatically. Send them back to choose the
+			// provider they originally signed up with.
+			return NextResponse.redirect(
+				new URL("/thia/login?error=account_exists", req.url)
+			);
+		}
 		console.error("OAuth callback failed:", e);
 		return NextResponse.json(
 			{ error: "authentication_failed" },

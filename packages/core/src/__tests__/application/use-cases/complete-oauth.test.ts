@@ -1,4 +1,4 @@
-import { it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { completeOAuth } from "../../../application/use-cases/complete-oauth";
 import { beginOAuth } from "../../../application/use-cases/begin-oauth";
 import { InMemoryUoW } from "../../../infra/memory/in-memory-uow";
@@ -13,7 +13,8 @@ import { EmailAddress } from "../../../domain/value-objects/email-address";
 function makeFakeProvider(
 	providerAccountId: string,
 	email?: string,
-	key = "fake"
+	key = "fake",
+	emailVerified = true
 ): OAuthProviderPort {
 	return {
 		key,
@@ -27,6 +28,7 @@ function makeFakeProvider(
 				provider: key,
 				providerAccountId,
 				email,
+				emailVerified,
 				name: "Fake User",
 				image: "https://example.com/avatar.png",
 			},
@@ -254,4 +256,108 @@ it("creates no user when the provider exchange fails", async () => {
 	expect(
 		await deps.uow.users.getByEmail(EmailAddress.create("g@example.com"))
 	).toBeNull();
+});
+
+describe("account linking by email", () => {
+	it("marks a new user's email verified when the provider verified it", async () => {
+		const deps = makeDeps(makeFakeProvider("acct-9", "h@example.com"));
+		await signIn(deps, "fake");
+
+		const stored = await deps.uow.users.getByEmail(
+			EmailAddress.create("h@example.com")
+		);
+		expect(stored?.emailVerified).toBeInstanceOf(Date);
+	});
+
+	it("leaves a new user's email unverified when the provider didn't verify it", async () => {
+		const deps = makeDeps(
+			makeFakeProvider("acct-10", "i@example.com", "fake", false)
+		);
+		await signIn(deps, "fake");
+
+		const stored = await deps.uow.users.getByEmail(
+			EmailAddress.create("i@example.com")
+		);
+		expect(stored?.emailVerified).toBeNull();
+	});
+
+	it("refuses to link when the new provider hasn't verified the email", async () => {
+		const deps = makeDeps(
+			makeFakeProvider("owner", "victim@example.com", "google"),
+			makeFakeProvider("attacker", "victim@example.com", "sketchy", false)
+		);
+		const owner = await signIn(deps, "google");
+
+		await expect(signIn(deps, "sketchy")).rejects.toThrow(
+			"ACCOUNT_LINK_CONFLICT"
+		);
+
+		const stored = await deps.uow.users.getByEmail(
+			EmailAddress.create("victim@example.com")
+		);
+		expect(stored?.id).toBe(owner.user.id);
+		expect(stored?.accounts.map((a) => a.provider)).toEqual(["google"]);
+	});
+
+	it("refuses to link the real owner into an account created with an unverified email", async () => {
+		// Pre-account hijacking: the attacker signs up first with the victim's
+		// email through a provider that doesn't verify it.
+		const deps = makeDeps(
+			makeFakeProvider("attacker", "victim@example.com", "sketchy", false),
+			makeFakeProvider("owner", "victim@example.com", "google")
+		);
+		await signIn(deps, "sketchy");
+
+		await expect(signIn(deps, "google")).rejects.toThrow(
+			"ACCOUNT_LINK_CONFLICT"
+		);
+
+		const stored = await deps.uow.users.getByEmail(
+			EmailAddress.create("victim@example.com")
+		);
+		expect(stored?.accounts.map((a) => a.provider)).toEqual(["sketchy"]);
+	});
+
+	it("never links automatically when accountLinking is 'never'", async () => {
+		const deps = {
+			...makeDeps(
+				makeFakeProvider("gh-11", "j@example.com", "github"),
+				makeFakeProvider("go-11", "j@example.com", "google")
+			),
+			accountLinking: "never" as const,
+		};
+		await signIn(deps, "github");
+
+		await expect(signIn(deps, "google")).rejects.toThrow(
+			"ACCOUNT_LINK_CONFLICT"
+		);
+	});
+
+	it("verifies a returning user's email once a provider confirms it", async () => {
+		const unverified = makeFakeProvider("acct-12", "k@example.com");
+		const deps = makeDeps(unverified);
+
+		// First sign-in reports the email unverified...
+		vi.spyOn(unverified, "complete").mockResolvedValueOnce({
+			tokens: { accessToken: "t" },
+			user: {
+				provider: "fake",
+				providerAccountId: "acct-12",
+				email: "k@example.com",
+				emailVerified: false,
+			},
+		});
+		await signIn(deps, "fake");
+		const before = await deps.uow.users.getByEmail(
+			EmailAddress.create("k@example.com")
+		);
+		expect(before?.emailVerified).toBeNull();
+
+		// ...the next reports it verified.
+		await signIn(deps, "fake");
+		const after = await deps.uow.users.getByEmail(
+			EmailAddress.create("k@example.com")
+		);
+		expect(after?.emailVerified).toBeInstanceOf(Date);
+	});
 });

@@ -3,7 +3,13 @@ const providers = [
 	{ key: "google", name: "Google", text: "#3c4043", bg: "#fff" },
 ];
 
-export default function LoginPage() {
+export default async function LoginPage({
+	searchParams,
+}: {
+	searchParams: Promise<{ error?: string }>;
+}) {
+	const { error } = await searchParams;
+
 	return (
 		<div
 			style={{
@@ -15,6 +21,12 @@ export default function LoginPage() {
 				justifyContent: "center",
 			}}
 		>
+			{error === "account_exists" && (
+				<p style={{ maxWidth: 360, textAlign: "center" }}>
+					An account already uses that email. Sign in with the provider you
+					used originally.
+				</p>
+			)}
 			{providers.map((provider) => (
 				<a
 					key={provider.key}

@@ -12,7 +12,12 @@ import {
 	OAuthUserInfo,
 } from "application/ports/oauth-provider-port";
 
-type ScopeType = "repo" | "repo_status" | "public_repo" | "repo_deployment";
+type ScopeType =
+	| "user_email"
+	| "repo"
+	| "repo_status"
+	| "public_repo"
+	| "repo_deployment";
 
 const GitHubTokensSchema = BaseTokenSchema.extend({
 	scope: z.string(),
@@ -27,6 +32,9 @@ const GitHubProfileSchema = z.object({
 });
 
 type GitHubUserProfile = z.infer<typeof GitHubProfileSchema>;
+
+/** An entry from GET /user/emails. */
+type GitHubEmail = { email: string; primary: boolean; verified: boolean };
 type GitHubTokens = z.infer<typeof GitHubTokensSchema>;
 
 export class GitHub
@@ -42,12 +50,15 @@ export class GitHub
 	protected tokenEndpoint = "https://github.com/login/oauth/access_token";
 
 	protected scopeMap = {
+		user_email: "user:email",
 		repo: "repo",
 		repo_status: "repo:status",
 		repo_deployment: "repo_deployment",
 		public_repo: "public_repo",
 	};
-	protected defaultScopes = [];
+	// user:email lets us read which of the user's emails GitHub has verified;
+	// the profile's public email says nothing about that.
+	protected defaultScopes: ScopeType[] = ["user_email"];
 
 	readonly style = { text: "#fff", bg: "#24292f" };
 
@@ -78,21 +89,46 @@ export class GitHub
 		const tokens = convertTokenToCamelCase(
 			await this.exchangeCodeForTokens(params.code),
 		);
-		const userProfile = await this.fetchPublicProfile(tokens.accessToken);
-		const user = this.convertToOAuthUserInfo(userProfile);
+		const [userProfile, emails] = await Promise.all([
+			this.fetchPublicProfile(tokens.accessToken),
+			this.fetchEmails(tokens.accessToken),
+		]);
+		const user = this.convertToOAuthUserInfo(userProfile, emails);
 		return { tokens, user };
 	}
 
 	protected convertToOAuthUserInfo(
 		userProfile: GitHubUserProfile,
+		emails: GitHubEmail[] = [],
 	): OAuthUserInfo {
+		// Prefer the primary email if verified, else any verified one. With no
+		// verified email, fall back to the public profile email, unverified.
+		const verified =
+			emails.find((e) => e.primary && e.verified) ??
+			emails.find((e) => e.verified);
+
 		return {
 			provider: "github",
 			providerAccountId: userProfile.id.toString(),
 			name: userProfile.name ?? userProfile.login,
-			email: userProfile.email ?? undefined,
+			email: verified?.email ?? userProfile.email ?? undefined,
+			emailVerified: verified !== undefined,
 			image: userProfile.avatar_url,
 		};
+	}
+
+	/**
+	 * The user's emails with GitHub's verification status. A failed request
+	 * yields no emails, so the sign-in proceeds with nothing marked verified -
+	 * failing closed rather than trusting an unconfirmed address.
+	 */
+	protected async fetchEmails(accessToken: string): Promise<GitHubEmail[]> {
+		const response = await fetch(`${this.apiBaseUrl}/user/emails`, {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!response.ok) return [];
+		const body: unknown = await response.json();
+		return Array.isArray(body) ? (body as GitHubEmail[]) : [];
 	}
 
 	protected async fetchPublicProfile(

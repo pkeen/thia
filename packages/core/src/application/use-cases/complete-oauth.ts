@@ -49,6 +49,22 @@ export type CompleteOAuthDeps<E = {}> = {
 	policyVersion: number;
 	enrichUser?: (u: UserPublic) => Promise<E> | E;
 	callbacks?: { onUserCreated?: (u: User) => void | Promise<void> };
+	/**
+	 * What to do when a sign-in's email matches an existing user who hasn't
+	 * linked this provider account yet.
+	 *
+	 * - `"verified-email"` (default): link only if the provider verified the
+	 *   email *and* the existing user's email is verified. The first check stops
+	 *   a provider that lets anyone claim any email from taking over an account;
+	 *   the second stops an attacker who signed up first with an unverified
+	 *   email from having the real owner linked into their account later.
+	 * - `"never"`: never link automatically; new providers must be connected
+	 *   explicitly by an already signed-in user.
+	 *
+	 * When linking is refused this throws `ACCOUNT_LINK_CONFLICT`. A second user
+	 * can't be created instead, because emails are unique.
+	 */
+	accountLinking?: "verified-email" | "never";
 };
 
 export async function completeOAuth<E = {}>(
@@ -75,13 +91,24 @@ export async function completeOAuth<E = {}>(
 		providerAccountId: oauthUser.providerAccountId,
 	});
 
+	// Only a real email the provider vouches for counts as verified - never
+	// the synthesized placeholder used when the provider gives no email.
+	const verifiedEmail =
+		oauthUser.email && oauthUser.emailVerified === true
+			? EmailAddress.create(oauthUser.email)
+			: undefined;
+
 	let user = await deps.uow.users.getByProviderAccount({
 		provider: oauthUser.provider,
 		providerAccountId: oauthUser.providerAccountId,
 	});
 	let isNewUser = false;
 
-	if (!user) {
+	if (user) {
+		// Returning user: record verification if the provider confirms the
+		// email on file (e.g. accounts created before this was tracked).
+		if (verifiedEmail?.equals(user.email)) user.verifyEmail(deps.clock.now());
+	} else {
 		const email = resolveEmail(
 			oauthUser.provider,
 			oauthUser.providerAccountId,
@@ -90,6 +117,13 @@ export async function completeOAuth<E = {}>(
 		const existingByEmail = await deps.uow.users.getByEmail(email);
 
 		if (existingByEmail) {
+			const linking = deps.accountLinking ?? "verified-email";
+			const bothVerified =
+				verifiedEmail !== undefined &&
+				existingByEmail.emailVerified !== null;
+			if (linking === "never" || !bothVerified) {
+				throw new Error("ACCOUNT_LINK_CONFLICT");
+			}
 			existingByEmail.linkAccount(linkedAccount);
 			user = existingByEmail;
 		} else {
@@ -101,6 +135,7 @@ export async function completeOAuth<E = {}>(
 				now: deps.clock.now(),
 			});
 			user.linkAccount(linkedAccount);
+			if (verifiedEmail) user.verifyEmail(deps.clock.now());
 			isNewUser = true;
 		}
 	}
