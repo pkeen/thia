@@ -1,19 +1,10 @@
-import { asUserId } from "@thia/core";
-import { thia } from "@/thia";
-import { getSessionToken } from "@/session";
+import { authorizer, getSubject } from "@/authz";
 
 export default async function Home() {
-	const token = await getSessionToken();
-	let user = null;
-
-	if (token) {
-		try {
-			const claims = await thia.verifySession(token);
-			user = await thia.uow.users.getById(asUserId(claims.sub));
-		} catch {
-			// invalid/expired session token — treat as signed out
-		}
-	}
+	const subject = await getSubject();
+	const canViewAdmin = subject
+		? await authorizer.can(subject, "admin.view")
+		: false;
 
 	return (
 		<div
@@ -26,9 +17,11 @@ export default async function Home() {
 				gap: 16,
 			}}
 		>
-			{user ? (
+			{subject ? (
 				<>
-					<p>Signed in as {user.email.value}</p>
+					<p>Signed in as {subject.email}</p>
+					<p>Roles: {subject.roles.join(", ")}</p>
+					{canViewAdmin && <a href="/thia/admin">Admin</a>}
 					<form action="/api/thia/logout" method="post">
 						<button type="submit">Sign out</button>
 					</form>
