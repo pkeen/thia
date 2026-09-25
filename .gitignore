@@ -52,3 +52,7 @@ out/
 
 # pnpm cache
 .pnpm/
+
+# Drizzle migration SQL must be committed - CI checks out a clean tree and
+# replays these. Overrides a global *.sql ignore, which silently left them out.
+!**/drizzle/migrations/*.sql
