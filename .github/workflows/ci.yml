@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes an in-flight run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Packages and app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The app and adapter import the packages' built output, not their source.
+      - name: Build packages
+        run: pnpm --filter @thia/core --filter @thia/authz --filter @thia/adapters-drizzle build
+
+      - name: Typecheck
+        run: |
+          pnpm --filter @thia/core exec tsc --noEmit
+          pnpm --filter @thia/authz exec tsc --noEmit
+          pnpm --filter @thia/adapters-drizzle exec tsc --noEmit
+          pnpm --filter thia-clean-builder-app exec tsc --noEmit
+
+      - name: Test @thia/core
+        run: pnpm --filter @thia/core test
+
+      # Also type-checks the compile-time tests (vitest --typecheck).
+      - name: Test @thia/authz
+        run: pnpm --filter @thia/authz test
+
+      - name: Test demo app
+        run: pnpm --filter thia-clean-builder-app test
+
+      # Placeholder config: the build must not need real credentials, and these
+      # are never used to reach anything. AUTH_SECRET has to be >= 32 bytes or
+      # the token signer refuses to start.
+      - name: Build demo app
+        run: pnpm --filter thia-clean-builder-app build
+        env:
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          AUTH_SECRET: ci-placeholder-secret-of-at-least-32-bytes
+          GITHUB_CLIENT_ID: ci
+          GITHUB_CLIENT_SECRET: ci
+          GITHUB_REDIRECT_URI: http://localhost:3000/api/thia/redirect/github
+          GOOGLE_CLIENT_ID: ci
+          GOOGLE_CLIENT_SECRET: ci
+          GOOGLE_REDIRECT_URI: http://localhost:3000/api/thia/redirect/google
+
+  adapter:
+    # Separate job: these tests start a real Postgres in Docker (testcontainers),
+    # so they're slower and shouldn't hold up the rest.
+    name: Drizzle adapter (Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build @thia/core
+        run: pnpm --filter @thia/core build
+
+      - name: Test @thia/adapters-drizzle
+        run: pnpm --filter @thia/adapters-drizzle test
