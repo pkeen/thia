@@ -9,5 +9,10 @@ export default defineConfig({
 	},
 	test: {
 		include: ["__tests__/**/*.test.ts?(x)"],
+		env: {
+			// next build sets this from experimental.authInterrupts in
+			// next.config.ts; without it forbidden()/unauthorized() refuse to run.
+			__NEXT_EXPERIMENTAL_AUTH_INTERRUPTS: "1",
+		},
 	},
 });
