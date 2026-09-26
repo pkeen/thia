@@ -21,6 +21,11 @@ export default async function LoginPage({
 				justifyContent: "center",
 			}}
 		>
+			{error === "cancelled" && (
+				<p style={{ maxWidth: 360, textAlign: "center" }}>
+					Sign-in was cancelled. Choose a provider to try again.
+				</p>
+			)}
 			{error === "account_exists" && (
 				<p style={{ maxWidth: 360, textAlign: "center" }}>
 					An account already uses that email. Sign in with the provider you

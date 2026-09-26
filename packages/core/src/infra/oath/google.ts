@@ -2,15 +2,18 @@ import {
 	OAuthProviderConfig,
 	BaseTokenSchema,
 	convertTokenToCamelCase,
-	NewAbstractOAuthProvider,
+	NewAbstractOAuthProviderBase,
 } from "./oauth-kit";
 import { z } from "zod";
+import { createRemoteJWKSet, jwtVerify, JWTVerifyGetKey } from "jose";
 import {
 	OAuthCompleteParams,
+	OAuthProviderError,
 	OAuthProviderPort,
 	OAuthTokenSet,
 	OAuthUserInfo,
-} from "application/ports/oauth-provider-port";
+} from "../../application/ports/oauth-provider-port";
+import { timingSafeEqual } from "../../application/oauth/pkce";
 
 type ScopeType = "openid" | "email" | "profile";
 
@@ -19,25 +22,39 @@ const GoogleTokensSchema = BaseTokenSchema.extend({
 	id_token: z.string(),
 });
 
-const GoogleProfileSchema = z.object({
-	sub: z.string(),
-	name: z.string().optional(),
-	picture: z.string().optional(),
+/** Claims read from a verified Google ID token. */
+const GoogleIdTokenClaimsSchema = z.object({
+	sub: z.string().min(1),
 	email: z.string().email().optional(),
 	email_verified: z.boolean().optional(),
+	name: z.string().optional(),
+	picture: z.string().optional(),
+	nonce: z.string().optional(),
+	azp: z.string().optional(),
 });
 
-type GoogleUserProfile = z.infer<typeof GoogleProfileSchema>;
+type GoogleIdTokenClaims = z.infer<typeof GoogleIdTokenClaimsSchema>;
 type GoogleTokens = z.infer<typeof GoogleTokensSchema>;
 
+/** From https://accounts.google.com/.well-known/openid-configuration */
+const GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
+const GOOGLE_JWKS_URI = "https://www.googleapis.com/oauth2/v3/certs";
+
+export interface GoogleConfig extends OAuthProviderConfig {
+	/**
+	 * Key source for ID token signatures. Defaults to Google's published JWKS
+	 * (fetched and cached by jose); tests inject a local key set.
+	 */
+	jwks?: JWTVerifyGetKey;
+}
+
 export class Google
-	extends NewAbstractOAuthProvider<ScopeType, GoogleTokens, GoogleUserProfile>
+	extends NewAbstractOAuthProviderBase<ScopeType, GoogleTokens, GoogleIdTokenClaims>
 	implements OAuthProviderPort
 {
 	readonly key = "google";
 	readonly name = "Google";
-
-	private userinfoEndpoint = "https://www.googleapis.com/oauth2/v3/userinfo";
+	readonly oidc = true;
 
 	protected authorizeEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
 	protected tokenEndpoint = "https://oauth2.googleapis.com/token";
@@ -51,62 +68,74 @@ export class Google
 
 	readonly style = { text: "#3c4043", bg: "#fff" };
 
-	constructor(config: OAuthProviderConfig) {
+	private jwks: JWTVerifyGetKey;
+
+	constructor(config: GoogleConfig) {
 		super(config);
-	}
-
-	async exchangeCodeForTokens(code: string): Promise<GoogleTokens> {
-		// Unlike GitHub, Google's token endpoint requires a form-encoded body,
-		// not query params.
-		const body = new URLSearchParams({
-			client_id: this.clientId,
-			client_secret: this.clientSecret,
-			redirect_uri: this.redirectUri,
-			grant_type: "authorization_code",
-			code,
-		});
-		const response = await fetch(this.tokenEndpoint, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Accept: "application/json",
-			},
-			body: body.toString(),
-		});
-
-		return await response.json();
+		this.jwks = config.jwks ?? createRemoteJWKSet(new URL(GOOGLE_JWKS_URI));
 	}
 
 	public async complete(
 		params: OAuthCompleteParams,
 	): Promise<{ tokens: OAuthTokenSet; user: OAuthUserInfo }> {
-		const tokens = convertTokenToCamelCase(
-			await this.exchangeCodeForTokens(params.code),
+		const raw = this.parseTokens(
+			GoogleTokensSchema,
+			await this.exchangeAuthorizationCode(params),
 		);
-		const userProfile = await this.fetchPublicProfile(tokens.accessToken);
-		const user = this.convertToOAuthUserInfo(userProfile);
-		return { tokens, user };
+		const claims = await this.verifyIdToken(raw.id_token, params.nonce);
+		const tokens: OAuthTokenSet = {
+			...convertTokenToCamelCase(raw),
+			idToken: raw.id_token,
+			claims,
+		};
+		return { tokens, user: this.convertToOAuthUserInfo(claims) };
 	}
 
-	protected convertToOAuthUserInfo(
-		userProfile: GoogleUserProfile,
-	): OAuthUserInfo {
+	/**
+	 * OIDC Core §3.1.3.7 validation of the ID token: RS256 signature against
+	 * Google's keys, issuer, audience (and azp when there are several
+	 * audiences), expiry, and the nonce this login sent.
+	 */
+	protected async verifyIdToken(
+		idToken: string,
+		expectedNonce: string | undefined,
+	): Promise<GoogleIdTokenClaims> {
+		const fail = () =>
+			new OAuthProviderError("id_token_invalid", { provider: this.key });
+		// begin() always sends a nonce for Google, so one must come back.
+		if (!expectedNonce) throw fail();
+
+		let payload: Record<string, unknown>;
+		try {
+			({ payload } = await jwtVerify(idToken, this.jwks, {
+				algorithms: ["RS256"],
+				issuer: GOOGLE_ISSUERS,
+				audience: this.clientId,
+				requiredClaims: ["sub", "iat", "exp"],
+			}));
+		} catch {
+			throw fail();
+		}
+
+		const parsed = GoogleIdTokenClaimsSchema.safeParse(payload);
+		if (!parsed.success) throw fail();
+		const claims = parsed.data;
+
+		if (!claims.nonce || !timingSafeEqual(claims.nonce, expectedNonce)) throw fail();
+		if (Array.isArray(payload.aud) && payload.aud.length > 1 && claims.azp !== this.clientId) {
+			throw fail();
+		}
+		return claims;
+	}
+
+	protected convertToOAuthUserInfo(claims: GoogleIdTokenClaims): OAuthUserInfo {
 		return {
 			provider: "google",
-			providerAccountId: userProfile.sub,
-			name: userProfile.name,
-			email: userProfile.email,
-			emailVerified: userProfile.email_verified,
-			image: userProfile.picture,
+			providerAccountId: claims.sub,
+			name: claims.name,
+			email: claims.email,
+			emailVerified: claims.email_verified,
+			image: claims.picture,
 		};
-	}
-
-	protected async fetchPublicProfile(
-		accessToken: string,
-	): Promise<GoogleUserProfile> {
-		const response = await fetch(this.userinfoEndpoint, {
-			headers: { Authorization: `Bearer ${accessToken}` },
-		});
-		return await response.json();
 	}
 }

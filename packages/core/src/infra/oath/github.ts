@@ -7,10 +7,11 @@ import {
 import { z } from "zod";
 import {
 	OAuthCompleteParams,
+	OAuthProviderError,
 	OAuthProviderPort,
 	OAuthTokenSet,
 	OAuthUserInfo,
-} from "application/ports/oauth-provider-port";
+} from "../../application/ports/oauth-provider-port";
 
 type ScopeType =
 	| "user_email"
@@ -66,28 +67,16 @@ export class GitHub
 		super(config);
 	}
 
-	async exchangeCodeForTokens(code: string): Promise<GitHubTokens> {
-		const tokenUrl = new URL(this.tokenEndpoint);
-		tokenUrl.searchParams.set("client_id", this.clientId);
-		tokenUrl.searchParams.set("client_secret", this.clientSecret);
-		tokenUrl.searchParams.set("redirect_uri", this.redirectUri);
-		tokenUrl.searchParams.set("grant_type", "authorization_code");
-		tokenUrl.searchParams.set("code", code);
-		const headers = new Headers();
-		headers.append("Accept", "application/json");
-		const data = await fetch(tokenUrl.toString(), {
-			method: "POST",
-			headers,
-		});
-
-		return await data.json();
-	}
-
 	public async complete(
 		params: OAuthCompleteParams,
 	): Promise<{ tokens: OAuthTokenSet; user: OAuthUserInfo }> {
+		// GitHub supports PKCE with S256 only; the verifier travels in the
+		// form body alongside the client credentials, never in the URL.
 		const tokens = convertTokenToCamelCase(
-			await this.exchangeCodeForTokens(params.code),
+			this.parseTokens(
+				GitHubTokensSchema,
+				await this.exchangeAuthorizationCode(params),
+			),
 		);
 		const [userProfile, emails] = await Promise.all([
 			this.fetchPublicProfile(tokens.accessToken),
@@ -140,6 +129,15 @@ export class GitHub
 		const response = await fetch(url.toString(), {
 			headers,
 		});
-		return await response.json();
+		const parsed = response.ok
+			? GitHubProfileSchema.safeParse(await response.json().catch(() => null))
+			: undefined;
+		if (!parsed?.success) {
+			throw new OAuthProviderError("profile_fetch_failed", {
+				provider: this.key,
+				status: response.status,
+			});
+		}
+		return parsed.data;
 	}
 }

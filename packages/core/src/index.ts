@@ -8,7 +8,7 @@ export * from "./infra/jwt/dev-signer";
 export * from "./infra/jwt/hmac-signer";
 export * from "./infra/memory/in-memory-user-repo";
 export * from "./infra/memory/in-memory-uow";
-export * from "./infra/state/in-memory-state-store";
+export * from "./infra/oauth-transaction/jose-transaction-sealer";
 export * from "./infra/registry/simple-provider-registry";
 export * from "./infra/oath/github";
 export * from "./infra/oath/google";
