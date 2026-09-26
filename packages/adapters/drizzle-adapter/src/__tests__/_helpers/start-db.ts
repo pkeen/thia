@@ -1,4 +1,4 @@
-import { GenericContainer } from "testcontainers";
+import { GenericContainer, Wait } from "testcontainers";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { runMigrations } from "./db.migrate";
@@ -11,6 +11,13 @@ export async function startTestDb() {
 			POSTGRES_DB: "testdb",
 		})
 		.withExposedPorts(5432)
+		// The image's first boot runs a temporary server to initialise the
+		// database, then restarts; the port can open before the real server is
+		// up ("the database system is starting up"). Wait for the second
+		// "ready" line instead.
+		.withWaitStrategy(
+			Wait.forLogMessage(/database system is ready to accept connections/, 2)
+		)
 		.start();
 
 	const host = container.getHost();
