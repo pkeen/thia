@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { completeOAuth } from "../../../application/use-cases/complete-oauth";
 import { beginOAuth } from "../../../application/use-cases/begin-oauth";
+import { deriveCodeChallenge } from "../../../application/oauth/pkce";
 import { InMemoryUoW } from "../../../infra/memory/in-memory-uow";
-import { InMemoryStateStore } from "../../../infra/state/in-memory-state-store";
 import { SimpleProviderRegistry } from "../../../infra/registry/simple-provider-registry";
 import { SystemClock } from "../../../infra/clock/system-clock";
 import { UlidIdGenerator } from "../../../infra/id/ulid-id-generator";
 import { DevTokenSigner } from "../../../infra/jwt/dev-signer";
 import type { OAuthProviderPort } from "../../../application/ports/oauth-provider-port";
+import type { OAuthTransaction } from "../../../application/ports/oauth-transaction-port";
 import { EmailAddress } from "../../../domain/value-objects/email-address";
+
+const CALLBACK = "https://app.example/callback";
 
 function makeFakeProvider(
 	providerAccountId: string,
@@ -40,7 +43,6 @@ function makeDeps(...providers: OAuthProviderPort[]) {
 	const clock = new SystemClock();
 	const ids = new UlidIdGenerator(clock);
 	const uow = new InMemoryUoW();
-	const stateStore = new InMemoryStateStore();
 	const registry = new SimpleProviderRegistry(
 		Object.fromEntries(providers.map((p) => [p.key, p]))
 	);
@@ -48,7 +50,6 @@ function makeDeps(...providers: OAuthProviderPort[]) {
 
 	return {
 		registry,
-		stateStore,
 		uow,
 		ids,
 		clock,
@@ -60,98 +61,265 @@ function makeDeps(...providers: OAuthProviderPort[]) {
 	};
 }
 
-it("logs in a brand-new user via OAuth", async () => {
-	const provider = makeFakeProvider("acct-1", "a@example.com");
-	const deps = makeDeps(provider);
+type Deps = ReturnType<typeof makeDeps>;
 
-	const { state } = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "fake", redirectUri: "https://app.example/callback" }
+const begin = (deps: Deps, provider: string) =>
+	beginOAuth(
+		{ registry: deps.registry, clock: deps.clock },
+		{ provider, redirectUri: CALLBACK }
 	);
 
-	const result = await completeOAuth(deps, {
-		provider: "fake",
-		code: "some-code",
-		state,
+/** Runs begin -> complete for one provider, as the redirect routes do. */
+async function signIn(deps: Deps, provider: string, code = "code") {
+	const { transaction } = await begin(deps, provider);
+	return completeOAuth(deps, {
+		provider,
+		code,
+		state: transaction.state,
+		transaction,
 	});
+}
+
+afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
+});
+
+it("logs in a brand-new user via OAuth", async () => {
+	const deps = makeDeps(makeFakeProvider("acct-1", "a@example.com"));
+
+	const result = await signIn(deps, "fake");
 
 	expect(result.user.email).toBe("a@example.com");
 	expect(result.keycards).toHaveLength(1);
 });
 
 it("recognizes a returning user by provider account", async () => {
-	const provider = makeFakeProvider("acct-2", "b@example.com");
-	const deps = makeDeps(provider);
+	const deps = makeDeps(makeFakeProvider("acct-2", "b@example.com"));
 
-	const first = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "fake", redirectUri: "https://app.example/callback" }
-	);
-	const login1 = await completeOAuth(deps, {
-		provider: "fake",
-		code: "code-1",
-		state: first.state,
-	});
-
-	const second = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "fake", redirectUri: "https://app.example/callback" }
-	);
-	const login2 = await completeOAuth(deps, {
-		provider: "fake",
-		code: "code-2",
-		state: second.state,
-	});
+	const login1 = await signIn(deps, "fake", "code-1");
+	const login2 = await signIn(deps, "fake", "code-2");
 
 	expect(login2.user.id).toBe(login1.user.id);
 });
 
 it("falls back to a synthetic email when the provider gives none", async () => {
-	const provider = makeFakeProvider("acct-3", undefined);
-	const deps = makeDeps(provider);
+	const deps = makeDeps(makeFakeProvider("acct-3", undefined));
 
-	const { state } = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "fake", redirectUri: "https://app.example/callback" }
-	);
-
-	const result = await completeOAuth(deps, {
-		provider: "fake",
-		code: "some-code",
-		state,
-	});
+	const result = await signIn(deps, "fake");
 
 	expect(result.user.email).toBe("fake-acct-3@users.noreply.thia.local");
 });
 
-it("rejects a reused or unknown state", async () => {
-	const provider = makeFakeProvider("acct-4", "c@example.com");
-	const deps = makeDeps(provider);
+describe("beginOAuth", () => {
+	it("sends the S256 challenge of the verifier it keeps, and a nonce only to OIDC providers", async () => {
+		const plain = makeFakeProvider("p", "p@example.com", "plain");
+		const oidc = { ...makeFakeProvider("o", "o@example.com", "oidc"), oidc: true };
+		const plainBegin = vi.spyOn(plain, "begin");
+		const oidcBegin = vi.spyOn(oidc, "begin");
+		const deps = makeDeps(plain, oidc);
 
-	await expect(
-		completeOAuth(deps, {
-			provider: "fake",
-			code: "some-code",
-			state: "never-issued",
-		})
-	).rejects.toThrow("INVALID_STATE");
+		const a = await begin(deps, "plain");
+		const b = await begin(deps, "oidc");
+
+		expect(plainBegin).toHaveBeenCalledWith({
+			redirectUri: CALLBACK,
+			state: a.transaction.state,
+			nonce: undefined,
+			codeChallenge: await deriveCodeChallenge(a.transaction.codeVerifier),
+		});
+		expect(a.transaction.nonce).toBeUndefined();
+		expect(b.transaction.nonce).toMatch(/^[A-Za-z0-9_-]{43}$/);
+		expect(oidcBegin.mock.calls[0][0].nonce).toBe(b.transaction.nonce);
+	});
+
+	it("records provider, callback, lifetime and returnTo in the transaction", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		const deps = makeDeps(makeFakeProvider("x", "x@example.com"));
+
+		const { transaction } = await beginOAuth(
+			{ registry: deps.registry, clock: deps.clock, ttlSec: 300 },
+			{ provider: "fake", redirectUri: CALLBACK, returnTo: "/thia/admin" }
+		);
+
+		const issuedAt = Date.parse("2026-01-01T00:00:00Z") / 1000;
+		expect(transaction).toMatchObject({
+			providerId: "fake",
+			redirectUri: CALLBACK,
+			returnTo: "/thia/admin",
+			issuedAt,
+			expiresAt: issuedAt + 300,
+		});
+	});
+
+	it("generates a fresh state and verifier for every attempt", async () => {
+		const deps = makeDeps(makeFakeProvider("x", "x@example.com"));
+
+		const attempts = await Promise.all(
+			Array.from({ length: 20 }, () => begin(deps, "fake"))
+		);
+
+		const states = new Set(attempts.map((a) => a.transaction.state));
+		const verifiers = new Set(attempts.map((a) => a.transaction.codeVerifier));
+		expect(states.size).toBe(20);
+		expect(verifiers.size).toBe(20);
+		for (const { transaction } of attempts) {
+			expect(transaction.state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+			// RFC 7636 §4.1: 43-128 unreserved characters.
+			expect(transaction.codeVerifier).toMatch(/^[A-Za-z0-9\-._~]{43,128}$/);
+			expect(transaction.codeVerifier).not.toBe(transaction.state);
+		}
+	});
 });
 
-/** Runs begin -> complete for one provider, as the redirect routes do. */
-async function signIn(
-	deps: ReturnType<typeof makeDeps>,
-	provider: string,
-	code = "code"
-) {
-	const { state } = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider, redirectUri: "https://app.example/callback" }
-	);
-	return completeOAuth(deps, { provider, code, state });
-}
+describe("transaction validation", () => {
+	it("passes the transaction's verifier, nonce and callback URI to the provider", async () => {
+		const provider = { ...makeFakeProvider("acct", "v@example.com"), oidc: true };
+		const complete = vi.spyOn(provider, "complete");
+		const deps = makeDeps(provider);
 
-afterEach(() => {
-	vi.useRealTimers();
+		const { transaction } = await begin(deps, "fake");
+		await completeOAuth(deps, {
+			provider: "fake",
+			code: "the-code",
+			state: transaction.state,
+			transaction,
+		});
+
+		expect(complete).toHaveBeenCalledWith({
+			redirectUri: CALLBACK,
+			code: "the-code",
+			state: transaction.state,
+			codeVerifier: transaction.codeVerifier,
+			nonce: transaction.nonce,
+		});
+	});
+
+	/** Every rejection must happen before the provider sees the code. */
+	async function expectRejectedWithoutExchange(
+		mutate: (tx: OAuthTransaction) => {
+			provider?: string;
+			code?: string;
+			state?: string;
+			transaction?: OAuthTransaction | undefined;
+		}
+	) {
+		const github = makeFakeProvider("gh", "r@example.com", "github");
+		const google = makeFakeProvider("go", "r@example.com", "google");
+		const calls = [vi.spyOn(github, "complete"), vi.spyOn(google, "complete")];
+		const deps = makeDeps(github, google);
+		const { transaction } = await begin(deps, "github");
+
+		const input = {
+			provider: "github",
+			code: "code",
+			state: transaction.state,
+			transaction,
+			...mutate(transaction),
+		};
+		await expect(completeOAuth(deps, input)).rejects.toThrow("INVALID_STATE");
+		for (const call of calls) expect(call).not.toHaveBeenCalled();
+		expect(
+			await deps.uow.users.getByEmail(EmailAddress.create("r@example.com"))
+		).toBeNull();
+	}
+
+	it("rejects a callback with no transaction", () =>
+		expectRejectedWithoutExchange(() => ({ transaction: undefined })));
+
+	it("rejects a state that doesn't match the transaction", () =>
+		expectRejectedWithoutExchange((tx) => ({
+			state: tx.state.slice(0, -1) + (tx.state.endsWith("A") ? "B" : "A"),
+		})));
+
+	it("rejects an empty state", () =>
+		expectRejectedWithoutExchange(() => ({ state: "" })));
+
+	it("rejects an empty code", () =>
+		expectRejectedWithoutExchange(() => ({ code: "" })));
+
+	it("rejects a transaction issued for a different provider, without calling either", () =>
+		expectRejectedWithoutExchange(() => ({ provider: "google" })));
+
+	it("rejects a structurally invalid transaction", () =>
+		expectRejectedWithoutExchange((tx) => ({
+			transaction: { ...tx, codeVerifier: "too-short" },
+		})));
+
+	it("rejects a transaction past its expiry, whatever the cookie did", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		const provider = makeFakeProvider("acct-6", "e@example.com");
+		const complete = vi.spyOn(provider, "complete");
+		const deps = makeDeps(provider);
+
+		const { transaction } = await begin(deps, "fake");
+
+		// default lifetime is 10 minutes
+		vi.setSystemTime(new Date("2026-01-01T00:10:00Z"));
+
+		await expect(
+			completeOAuth(deps, {
+				provider: "fake",
+				code: "code",
+				state: transaction.state,
+				transaction,
+			})
+		).rejects.toThrow("INVALID_STATE");
+		expect(complete).not.toHaveBeenCalled();
+	});
+
+	it("does not itself prevent reusing a transaction - the provider's single-use code does", async () => {
+		// With client-held transactions there is no server-side record to
+		// consume. A second completion reaches the provider with the same
+		// code and verifier, which a real provider rejects as already used.
+		const provider = makeFakeProvider("acct-5", "d@example.com");
+		const used = new Set<string>();
+		vi.spyOn(provider, "complete").mockImplementation(async ({ code }) => {
+			if (used.has(code)) throw new Error("invalid_grant");
+			used.add(code);
+			return {
+				tokens: { accessToken: "t" },
+				user: { provider: "fake", providerAccountId: "acct-5" },
+			};
+		});
+		const deps = makeDeps(provider);
+		const { transaction } = await begin(deps, "fake");
+		const input = { provider: "fake", code: "code", state: transaction.state, transaction };
+
+		await completeOAuth(deps, input);
+		await expect(completeOAuth(deps, input)).rejects.toThrow("invalid_grant");
+	});
+});
+
+it("rejects an unknown provider when beginning and completing", async () => {
+	const deps = makeDeps(makeFakeProvider("acct-7", "f@example.com"));
+
+	await expect(begin(deps, "ghost")).rejects.toThrow("PROVIDER_NOT_FOUND");
+
+	// a transaction for a provider that is no longer registered
+	const { transaction } = await begin(deps, "fake");
+	const ghost = { ...transaction, providerId: "ghost" };
+	await expect(
+		completeOAuth(deps, {
+			provider: "ghost",
+			code: "code",
+			state: ghost.state,
+			transaction: ghost,
+		})
+	).rejects.toThrow("PROVIDER_NOT_FOUND");
+});
+
+it("creates no user when the provider exchange fails", async () => {
+	const provider = makeFakeProvider("acct-8", "g@example.com");
+	vi.spyOn(provider, "complete").mockRejectedValue(new Error("bad code"));
+	const deps = makeDeps(provider);
+
+	await expect(signIn(deps, "fake")).rejects.toThrow("bad code");
+	expect(
+		await deps.uow.users.getByEmail(EmailAddress.create("g@example.com"))
+	).toBeNull();
 });
 
 it("links a second provider to the existing user with the same email", async () => {
@@ -174,88 +342,6 @@ it("links a second provider to the existing user with the same email", async () 
 		"github",
 		"google",
 	]);
-});
-
-it("rejects a state issued for a different provider, without calling either", async () => {
-	const github = makeFakeProvider("gh-2", "x@example.com", "github");
-	const google = makeFakeProvider("go-2", "x@example.com", "google");
-	const githubComplete = vi.spyOn(github, "complete");
-	const googleComplete = vi.spyOn(google, "complete");
-	const deps = makeDeps(github, google);
-
-	const { state } = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "github", redirectUri: "https://app.example/callback" }
-	);
-
-	await expect(
-		completeOAuth(deps, { provider: "google", code: "code", state })
-	).rejects.toThrow("INVALID_STATE");
-	expect(githubComplete).not.toHaveBeenCalled();
-	expect(googleComplete).not.toHaveBeenCalled();
-});
-
-it("rejects a state that has already been used", async () => {
-	const deps = makeDeps(makeFakeProvider("acct-5", "d@example.com"));
-
-	const { state } = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "fake", redirectUri: "https://app.example/callback" }
-	);
-	await completeOAuth(deps, { provider: "fake", code: "code", state });
-
-	await expect(
-		completeOAuth(deps, { provider: "fake", code: "code", state })
-	).rejects.toThrow("INVALID_STATE");
-});
-
-it("rejects a state older than the state store's lifetime", async () => {
-	vi.useFakeTimers({ toFake: ["Date"] });
-	vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-	const deps = makeDeps(makeFakeProvider("acct-6", "e@example.com"));
-
-	const { state } = await beginOAuth(
-		{ registry: deps.registry, stateStore: deps.stateStore },
-		{ provider: "fake", redirectUri: "https://app.example/callback" }
-	);
-
-	// default lifetime is 10 minutes
-	vi.setSystemTime(new Date("2026-01-01T00:11:00Z"));
-
-	await expect(
-		completeOAuth(deps, { provider: "fake", code: "code", state })
-	).rejects.toThrow("INVALID_STATE");
-});
-
-it("rejects an unknown provider when beginning and completing", async () => {
-	const deps = makeDeps(makeFakeProvider("acct-7", "f@example.com"));
-
-	await expect(
-		beginOAuth(
-			{ registry: deps.registry, stateStore: deps.stateStore },
-			{ provider: "ghost", redirectUri: "https://app.example/callback" }
-		)
-	).rejects.toThrow("PROVIDER_NOT_FOUND");
-
-	// a state for a provider that is no longer registered
-	const state = await deps.stateStore.issue({
-		providerId: "ghost",
-		redirectUri: "https://app.example/callback",
-	});
-	await expect(
-		completeOAuth(deps, { provider: "ghost", code: "code", state })
-	).rejects.toThrow("PROVIDER_NOT_FOUND");
-});
-
-it("creates no user when the provider exchange fails", async () => {
-	const provider = makeFakeProvider("acct-8", "g@example.com");
-	vi.spyOn(provider, "complete").mockRejectedValue(new Error("bad code"));
-	const deps = makeDeps(provider);
-
-	await expect(signIn(deps, "fake")).rejects.toThrow("bad code");
-	expect(
-		await deps.uow.users.getByEmail(EmailAddress.create("g@example.com"))
-	).toBeNull();
 });
 
 describe("account linking by email", () => {

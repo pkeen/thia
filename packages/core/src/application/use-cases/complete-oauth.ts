@@ -1,5 +1,6 @@
 import { ProviderRegistryPort } from "../ports/provider-registry-port";
-import { AuthStateStore } from "../ports/state-store-port";
+import { OAuthTransaction } from "../ports/oauth-transaction-port";
+import { oauthTransactionMatches } from "../oauth/transaction";
 import { UnitOfWork } from "../ports/uow.port";
 import { IdGenerator } from "../ports/id-generator.port";
 import { Clock } from "../ports/clock.port";
@@ -31,14 +32,20 @@ const resolveEmail = (provider: string, providerAccountId: string, email?: strin
 	EmailAddress.create(email ?? `${provider}-${providerAccountId}@users.noreply.thia.local`);
 
 export type CompleteOAuthInput = {
+	/** Provider named by the callback route. */
 	provider: string;
+	/** `code` and `state` exactly as returned on the callback (untrusted). */
 	code: string;
 	state: string;
+	/**
+	 * The transaction `beginOAuth` created for this browser, already unsealed
+	 * by the caller; undefined when none was found.
+	 */
+	transaction: OAuthTransaction | undefined;
 };
 
 export type CompleteOAuthDeps<E = {}> = {
 	registry: ProviderRegistryPort;
-	stateStore: AuthStateStore;
 	uow: UnitOfWork;
 	ids: IdGenerator;
 	clock: Clock;
@@ -71,18 +78,27 @@ export async function completeOAuth<E = {}>(
 	deps: CompleteOAuthDeps<E>,
 	input: CompleteOAuthInput
 ): Promise<LoginOutput<E>> {
-	const transient = await deps.stateStore.consume(input.state);
-	if (!transient) throw new Error("INVALID_STATE");
-	if (transient.providerId !== input.provider) throw new Error("INVALID_STATE");
+	// Nothing reaches the provider unless this browser holds an unexpired
+	// transaction for this provider whose state matches the callback's.
+	const transaction = input.transaction;
+	if (!oauthTransactionMatches(transaction, input, deps.clock.now())) {
+		throw new Error("INVALID_STATE");
+	}
+	if (typeof input.code !== "string" || input.code.length === 0) {
+		throw new Error("INVALID_STATE");
+	}
 
 	const provider = deps.registry.get(input.provider);
 	if (!provider) throw new Error("PROVIDER_NOT_FOUND");
 
+	// Redirect URI, verifier and nonce come from the trusted transaction,
+	// never from the callback request.
 	const { user: oauthUser } = await provider.complete({
-		redirectUri: transient.redirectUri,
+		redirectUri: transaction.redirectUri,
 		code: input.code,
-		state: input.state,
-		codeVerifier: transient.codeVerifier,
+		state: transaction.state,
+		codeVerifier: transaction.codeVerifier,
+		nonce: transaction.nonce,
 	});
 
 	const linkedAccount = LinkedAccount.link({
