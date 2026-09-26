@@ -5,13 +5,12 @@ import { asUserId, EmailAddress, User } from "@thia/core";
 const thia = vi.hoisted(() => ({
 	verifySession: vi.fn(),
 	uow: { users: { getById: vi.fn() } },
+	roleStore: { getRoles: vi.fn() },
 }));
 vi.mock("@/thia", () => ({ thia }));
 
 const cookieStore = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => cookieStore }));
-
-process.env.ADMIN_EMAILS = "boss@example.com";
 
 const { default: Home } = await import("@/app/page");
 const { default: AdminPage } = await import("@/app/thia/admin/page");
@@ -21,7 +20,8 @@ const { default: LoginPage } = await import("@/app/thia/login/page");
 const render = async (page: Promise<React.ReactElement>) =>
 	renderToStaticMarkup(await page);
 
-function signedInAs(email: string) {
+function signedInAs(email: string, assignedRoles: string[] = []) {
+	thia.roleStore.getRoles.mockResolvedValue(assignedRoles);
 	cookieStore.get.mockReturnValue({ value: "jwt.value" });
 	thia.verifySession.mockResolvedValue({ sub: "01USER0000000000000000000" });
 	thia.uow.users.getById.mockResolvedValue(
@@ -57,7 +57,7 @@ describe("home page", () => {
 	});
 
 	it("offers the admin link to admins only", async () => {
-		signedInAs("boss@example.com");
+		signedInAs("boss@example.com", ["admin"]);
 		expect(await render(Home())).toContain('href="/thia/admin"');
 
 		signedInAs("someone@example.com");
@@ -67,7 +67,7 @@ describe("home page", () => {
 
 describe("admin page", () => {
 	it("shows the admin content to an admin", async () => {
-		signedInAs("boss@example.com");
+		signedInAs("boss@example.com", ["admin"]);
 		const html = await render(AdminPage());
 
 		expect(html).toContain("<h1>Admin</h1>");
@@ -92,6 +92,7 @@ describe("admin page", () => {
 	});
 
 	it("treats a forged session as signed out", async () => {
+		thia.roleStore.getRoles.mockResolvedValue([]);
 		cookieStore.get.mockReturnValue({ value: "tampered" });
 		thia.verifySession.mockRejectedValue(new Error("signature mismatch"));
 

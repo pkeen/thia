@@ -8,6 +8,13 @@
       "when": 1788689029486,
       "tag": "0000_sudden_metal_master",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790436052700,
+      "tag": "0001_spicy_skin",
+      "breakpoints": true
     }
   ]
 }

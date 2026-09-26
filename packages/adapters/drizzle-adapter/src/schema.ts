@@ -272,10 +272,32 @@ export function createSchema(namespace = "thia") {
 		})
 	);
 
+	// Role *assignments* only. What each role may do is defined in code, in the
+	// map given to @thia/authz's createRbac.
+	const userRoleTable = ns.table(
+		"user_role",
+		{
+			userId: text("user_id")
+				.notNull()
+				.references(() => userTable.id, { onDelete: "cascade" }),
+			role: text("role").notNull(),
+			createdAt: timestamp("created_at", {
+				withTimezone: true,
+				mode: "date",
+			})
+				.notNull()
+				.defaultNow(),
+		},
+		(table) => ({
+			compositePk: primaryKey({ columns: [table.userId, table.role] }),
+		})
+	);
+
 	const usersRelations = relations(userTable, ({ many }) => ({
 		accounts: many(accountTable),
+		roles: many(userRoleTable),
 	}));
-	return { ns, userTable, accountTable /* ... */ };
+	return { ns, userTable, accountTable, userRoleTable };
 }
 
 export type DefaultPostgresSchema = ReturnType<typeof createSchema>;
@@ -284,6 +306,8 @@ export type UserTable = DefaultPostgresSchema["userTable"];
 export type UserRow = InferSelectModel<UserTable>;
 export type AccountTable = DefaultPostgresSchema["accountTable"];
 export type AccountRow = InferSelectModel<AccountTable>;
+export type UserRoleTable = DefaultPostgresSchema["userRoleTable"];
+export type UserRoleRow = InferSelectModel<UserRoleTable>;
 
 // type DefaultPostgresColumn<
 // 	T extends {

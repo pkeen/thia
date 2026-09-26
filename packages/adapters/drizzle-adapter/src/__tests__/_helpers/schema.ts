@@ -1,13 +1,17 @@
 import { createSchema } from "../../schema";
 import type { PgSchema } from "drizzle-orm/pg-core";
-import type { UserTable } from "../../schema";
-import type { AccountTable } from "../../schema";
+import type { UserTable, AccountTable, UserRoleTable } from "../../schema";
 
 const {
 	ns,
 	userTable,
 	accountTable,
-}: { ns: PgSchema; userTable: UserTable; accountTable: AccountTable } =
-	createSchema();
+	userRoleTable,
+}: {
+	ns: PgSchema;
+	userTable: UserTable;
+	accountTable: AccountTable;
+	userRoleTable: UserRoleTable;
+} = createSchema();
 
-export { ns, userTable, accountTable };
+export { ns, userTable, accountTable, userRoleTable };

@@ -19,7 +19,7 @@
 		"dev": "rollup -c -w",
 		"test": "vitest run",
 		"db:generate": "drizzle-kit generate",
-        "db:migrate": "drizzle-kit migrate",
+		"db:migrate": "drizzle-kit migrate",
 		"db:migrate-script": "tsx src/__tests__/db.migrate.ts",
 		"db:start": "docker run --rm -d -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=thia_drizzle_test -p 5433:5432 --name pg-test postgres:15",
 		"db:stop": "docker stop pg-test"
@@ -30,7 +30,8 @@
 	"peerDependencies": {
 		"@thia/core": "workspace:*",
 		"drizzle-orm": "^0.45.1",
-		"typescript": "^5.0.0"
+		"typescript": "^5.0.0",
+		"@thia/authz": "workspace:*"
 	},
 	"devDependencies": {
 		"@rollup/plugin-commonjs": "^28.0.1",

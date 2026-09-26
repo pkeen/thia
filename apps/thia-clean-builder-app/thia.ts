@@ -11,7 +11,10 @@ import {
 	beginOAuth,
 	completeOAuth,
 } from "@thia/core";
-import { PostgresUserRepository } from "@thia/adapters-drizzle";
+import {
+	PostgresRoleStore,
+	PostgresUserRepository,
+} from "@thia/adapters-drizzle";
 import db from "@/db";
 
 // NOTE (MVP): state store is still in-memory (fine - it's a short-lived CSRF
@@ -62,8 +65,13 @@ const registry = new SimpleProviderRegistry({
 	}),
 });
 
+// Role assignments live in Postgres; reads aren't cached, so granting or
+// revoking a role takes effect on the user's next request.
+const roleStore = PostgresRoleStore(db);
+
 export const thia = {
 	uow,
+	roleStore,
 
 	redirectUriFor(provider: string): string | undefined {
 		return redirectUris[provider];

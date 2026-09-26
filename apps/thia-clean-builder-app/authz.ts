@@ -19,19 +19,11 @@ export const authorizer = createAuthorizer({
 	"admin.view": rbac.can("admin.view"),
 });
 
-// MVP role source: roles are assigned in config rather than stored with the
-// user. Everyone signed in is a viewer; ADMIN_EMAILS (comma-separated) are
-// admins. Persisting role assignments is the next step.
-const adminEmails = new Set(
-	(process.env.ADMIN_EMAILS ?? "")
-		.split(",")
-		.map((e) => e.trim().toLowerCase())
-		.filter(Boolean)
-);
-
-function rolesFor(email: string): string[] {
-	return adminEmails.has(email.toLowerCase()) ? ["admin"] : ["viewer"];
-}
+/**
+ * Everyone signed in is at least a viewer; anything more is granted in the
+ * database (see the assign-role script). Role definitions stay in code above.
+ */
+const DEFAULT_ROLES = ["viewer"];
 
 /** The signed-in user as an authorization subject, or null if signed out. */
 export async function getSubject(): Promise<Subject | null> {
@@ -43,8 +35,12 @@ export async function getSubject(): Promise<Subject | null> {
 		const user = await thia.uow.users.getById(asUserId(claims.sub));
 		if (!user) return null;
 
-		const email = user.email.value;
-		return { id: user.id, email, roles: rolesFor(email) };
+		const assigned = await thia.roleStore.getRoles(user.id);
+		return {
+			id: user.id,
+			email: user.email.value,
+			roles: assigned.length > 0 ? assigned : DEFAULT_ROLES,
+		};
 	} catch {
 		// invalid/expired session token — treat as signed out
 		return null;
