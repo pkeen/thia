@@ -15,6 +15,7 @@ Use this index to distinguish design intent, planned work, and implemented behav
 | Brief | Created | Status |
 | --- | --- | --- |
 | [Sprint 001: Session policy](sprints/001-session-policy.md) | 2026-09-26 | Completed 2026-09-27 |
+| [Sprint 002: Refresh-token rotation](sprints/002-refresh-token-rotation.md) | 2026-09-27 | Ready for implementation |
 
 ## Feature documentation
 
