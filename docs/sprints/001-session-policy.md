@@ -193,7 +193,7 @@ account-management features. Do not add speculative infrastructure for these.
 
 ## Delivery record
 
-Completed 2026-09-27; delivered in the commit that marks this sprint completed (see `git log -- docs/sprints/001-session-policy.md`). Decision:
+Completed 2026-09-27 in `54b70a4`. Decision:
 [ADR-003](../decisions/003-selectable-session-policy.md). Usage guide:
 [Session policies](../guides/session-policies.md).
 

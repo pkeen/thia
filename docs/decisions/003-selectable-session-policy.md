@@ -3,7 +3,7 @@
 - Date: 2026-09-27
 - Status: Accepted
 - Implementation: Delivered by [Sprint 001](../sprints/001-session-policy.md)
-  (see that sprint's delivery record for the commit). Usage and migration guidance:
+  in `54b70a4`. Usage and migration guidance:
   [Session policies guide](../guides/session-policies.md).
 
 ### Context
