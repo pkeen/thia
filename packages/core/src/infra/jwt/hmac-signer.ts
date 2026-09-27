@@ -1,9 +1,15 @@
-import { SignJWT, jwtVerify } from "jose";
-import { AuthClaims } from "application/claims/auth-claims";
+import { SignJWT, jwtVerify, errors } from "jose";
+import {
+	AUTH_CLAIMS_CLOCK_TOLERANCE_SEC,
+	AuthClaims,
+	parseAuthClaims,
+} from "../../application/claims/auth-claims";
+import { InvalidSessionTokenError } from "../../application/session/errors";
+import { Clock } from "../../application/ports/clock.port";
 import {
 	TokenSigner,
 	TokenVerifier,
-} from "application/ports/token-signer.port";
+} from "../../application/ports/token-signer.port";
 
 const MIN_SECRET_BYTES = 32;
 
@@ -46,34 +52,66 @@ export class HmacTokenSigner implements TokenSigner {
 	}
 }
 
+/** Longer than any token we issue; anything bigger isn't worth parsing. */
+const MAX_TOKEN_LENGTH = 8192;
+
+export type HmacTokenVerifierOptions = {
+	/** Both are required: a verifier that skipped them would accept tokens minted for another app. */
+	issuer: string;
+	audience: string;
+	/** Defaults to the system clock; injectable for tests. */
+	clock?: Clock;
+};
+
+/**
+ * Verifies HS256 only (no algorithm negotiation), the configured issuer and
+ * audience, expiry with AUTH_CLAIMS_CLOCK_TOLERANCE_SEC of skew, then
+ * validates the payload at runtime with parseAuthClaims. Every rejection is
+ * an InvalidSessionTokenError carrying a reason code, never token content.
+ */
 export class HmacTokenVerifier implements TokenVerifier {
 	private key: Uint8Array;
 
 	constructor(
 		secret: string,
-		private expected?: { issuer?: string; audience?: string }
+		private expected: HmacTokenVerifierOptions
 	) {
 		this.key = encodeSecret(secret);
+		if (!expected?.issuer || !expected?.audience) {
+			throw new Error("HmacTokenVerifier requires an issuer and an audience");
+		}
 	}
 
 	async verify(token: string): Promise<AuthClaims> {
-		const { payload } = await jwtVerify(token, this.key, {
-			algorithms: ["HS256"],
-			issuer: this.expected?.issuer,
-			audience: this.expected?.audience,
-		});
+		if (
+			typeof token !== "string" ||
+			token.length === 0 ||
+			token.length > MAX_TOKEN_LENGTH
+		) {
+			throw new InvalidSessionTokenError("malformed");
+		}
+		const now = this.expected.clock?.now() ?? new Date();
 
-		return {
-			iss: payload.iss!,
-			aud: payload.aud as string,
-			sub: payload.sub!,
-			iat: payload.iat!,
-			exp: payload.exp!,
-			jti: payload.jti as string | undefined,
-			ver: payload.ver as number,
-			uvn: payload.uvn as number,
-			pvn: payload.pvn as number,
-			usr: payload.usr as AuthClaims["usr"],
-		};
+		let payload: unknown;
+		try {
+			({ payload } = await jwtVerify(token, this.key, {
+				algorithms: ["HS256"],
+				issuer: this.expected.issuer,
+				audience: this.expected.audience,
+				requiredClaims: ["iss", "aud", "sub", "iat", "exp"],
+				clockTolerance: AUTH_CLAIMS_CLOCK_TOLERANCE_SEC,
+				currentDate: now,
+			}));
+		} catch (e) {
+			if (e instanceof errors.JWTExpired) {
+				throw new InvalidSessionTokenError("expired");
+			}
+			if (e instanceof errors.JOSEError) {
+				throw new InvalidSessionTokenError("verification_failed");
+			}
+			throw e;
+		}
+
+		return parseAuthClaims(payload, now);
 	}
 }

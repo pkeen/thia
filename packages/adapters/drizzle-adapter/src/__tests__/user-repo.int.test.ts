@@ -396,3 +396,116 @@ describe("Pg Drizzle UserRepository", () => {
 		expect(stillOwner?.id).toEqual(owner.id);
 	});
 });
+
+describe("token versions (sign out everywhere)", () => {
+	const buildRepos = (db: any, s: any) => ({
+		users: PostgresUserRepository(db, s),
+	});
+	/** Autocommit repository on the shared pool - each call its own statement. */
+	const repo = () => PostgresUserRepository(ctx!.db);
+
+	async function createUser(id: string) {
+		const userId = asUserId(id);
+		await repo().save(
+			User.create({
+				id: userId,
+				email: EmailAddress.create(`${id.toLowerCase()}@tv.test`),
+				now: new Date(),
+			})
+		);
+		return userId;
+	}
+
+	it("increments atomically and returns the new version", async () => {
+		const id = await createUser("01TVINCREMENT000000000000");
+
+		await expect(repo().incrementTokenVersion(id)).resolves.toBe(1);
+		await expect(repo().incrementTokenVersion(id)).resolves.toBe(2);
+		expect((await repo().getById(id))!.tokenVersion()).toBe(2);
+	});
+
+	it("returns null for a user that does not exist", async () => {
+		await expect(
+			repo().incrementTokenVersion(asUserId("01TVMISSING00000000000000"))
+		).resolves.toBeNull();
+	});
+
+	it("loses no increments under concurrent revocations", async () => {
+		const id = await createUser("01TVCONCURRENT00000000000");
+		const N = 25;
+
+		const results = await Promise.all(
+			Array.from({ length: N }, () => repo().incrementTokenVersion(id))
+		);
+
+		// Each call observed a distinct post-increment value: none overwrote another.
+		expect([...results].sort((a, b) => a! - b!)).toEqual(
+			Array.from({ length: N }, (_, i) => i + 1)
+		);
+		expect((await repo().getById(id))!.tokenVersion()).toBe(N);
+	});
+
+	it("a stale user saved after a revocation does not undo it", async () => {
+		const id = await createUser("01TVSTALESAVE000000000000");
+		const stale = (await repo().getById(id))!; // e.g. a login in progress
+		expect(stale.tokenVersion()).toBe(0);
+
+		await repo().incrementTokenVersion(id); // sign out everywhere
+
+		stale.updateProfile({ name: "Updated by the login" });
+		await repo().save(stale);
+
+		const stored = (await repo().getById(id))!;
+		expect(stored.tokenVersion()).toBe(1);
+		expect(stored.name.value).toBe("Updated by the login");
+	});
+
+	it("a revocation racing an open save transaction waits for it and still counts", async () => {
+		const id = await createUser("01TVOPENTX000000000000000");
+
+		// Transaction A loads and saves (row now locked) but hasn't committed.
+		const txA = new DrizzlePgUoW(ctx!.pool, buildRepos);
+		await txA.start();
+		const loaded = (await txA.users.getById(id))!;
+		loaded.updateProfile({ name: "From tx A" });
+		await txA.users.save(loaded);
+
+		// The revocation blocks on A's row lock...
+		const revocation = repo().incrementTokenVersion(id);
+		const settled = await Promise.race([
+			revocation.then(() => "done"),
+			new Promise((r) => setTimeout(() => r("waiting"), 200)),
+		]);
+		expect(settled).toBe("waiting");
+
+		// ...and applies on top of A's committed write, not beneath it.
+		await txA.commit();
+		await expect(revocation).resolves.toBe(1);
+
+		const stored = (await repo().getById(id))!;
+		expect(stored.tokenVersion()).toBe(1);
+		expect(stored.name.value).toBe("From tx A");
+	});
+
+	it("interleaved stale saves and revocations keep every revocation", async () => {
+		const id = await createUser("01TVINTERLEAVED0000000000");
+		const snapshots = await Promise.all(
+			Array.from({ length: 10 }, () => repo().getById(id))
+		);
+
+		await Promise.all([
+			...snapshots.map((u, i) => {
+				u!.updateProfile({ name: `save ${i}` });
+				return repo().save(u!);
+			}),
+			...Array.from({ length: 10 }, () => repo().incrementTokenVersion(id)),
+		]);
+
+		expect((await repo().getById(id))!.tokenVersion()).toBe(10);
+	});
+
+	it("a brand-new user starts at version 0", async () => {
+		const id = await createUser("01TVNEWUSER00000000000000");
+		expect((await repo().getById(id))!.tokenVersion()).toBe(0);
+	});
+});

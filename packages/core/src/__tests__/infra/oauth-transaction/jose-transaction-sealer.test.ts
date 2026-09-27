@@ -129,7 +129,7 @@ describe("JoseOAuthTransactionSealer", () => {
 
 	it("cannot be used as a session token", async () => {
 		const sealed = await sealer().seal(transaction());
-		await expect(new HmacTokenVerifier(SECRET).verify(sealed)).rejects.toThrow();
+		await expect(new HmacTokenVerifier(SECRET, { issuer: "thia-test", audience: "thia-test" }).verify(sealed)).rejects.toThrow();
 	});
 
 	it("does not use the raw secret as its encryption key", async () => {

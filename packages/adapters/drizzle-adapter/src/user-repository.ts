@@ -2,7 +2,7 @@ import { UserRepository, User, EmailAddress, asUserId } from "@thia/core";
 import { DefaultPostgresSchema, createSchema } from "./schema";
 import { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { NeonHttpDatabase } from "drizzle-orm/neon-http";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { accountSnapshotToColumns, rowToSnapshot } from "./snapshots-mappers";
 
 export function PostgresUserRepository(
@@ -45,6 +45,10 @@ export function PostgresUserRepository(
 				passwordHash: s.passwordHash ?? null,
 				tokenVersion: s.tokenVersion ?? 0,
 			})
+			// token_version is deliberately absent from the update: `user` may
+			// have been loaded before a concurrent revocation, and writing its
+			// stale version back would silently undo it. Only
+			// incrementTokenVersion changes it for an existing row.
 			.onConflictDoUpdate({
 				target: userTable.id,
 				set: {
@@ -55,7 +59,6 @@ export function PostgresUserRepository(
 					name: s.name ?? null,
 					image: s.image ?? null,
 					passwordHash: s.passwordHash ?? null,
-					tokenVersion: s.tokenVersion ?? 0,
 				},
 			});
 
@@ -149,8 +152,25 @@ export function PostgresUserRepository(
 		return getById(asUserId(rows[0].userId));
 	};
 
+	/**
+	 * A single UPDATE ... SET token_version = token_version + 1: Postgres
+	 * row-locks for the duration, so concurrent revocations each count and
+	 * none can be lost, with or without a surrounding transaction.
+	 */
+	const incrementTokenVersion: UserRepository["incrementTokenVersion"] = async (
+		id
+	) => {
+		const rows = await client
+			.update(userTable)
+			.set({ tokenVersion: sql`${userTable.tokenVersion} + 1` })
+			.where(eq(userTable.id, id))
+			.returning({ tokenVersion: userTable.tokenVersion });
+		return rows.length === 0 ? null : rows[0].tokenVersion;
+	};
+
 	return {
 		getById,
+		incrementTokenVersion,
 		name: "drizzle-pg",
 		save,
 		getByEmail,

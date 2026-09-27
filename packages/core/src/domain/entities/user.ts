@@ -334,11 +334,14 @@ export class User {
 	}
 
 	// —— token version API ——
+	/**
+	 * The stored token version as loaded. Read-only on purpose: revocation is
+	 * an atomic repository operation (UserRepository.incrementTokenVersion),
+	 * because bumping a loaded snapshot and saving it could lose concurrent
+	 * increments or be overwritten by another stale save.
+	 */
 	tokenVersion(): number {
 		return this._tokenVersion;
-	}
-	bumpTokenVersion(): void {
-		this._tokenVersion += 1;
 	}
 
 	// —— password credential API ——

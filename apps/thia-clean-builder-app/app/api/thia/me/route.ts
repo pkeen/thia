@@ -1,26 +1,30 @@
 import { NextResponse } from "next/server";
-import { asUserId } from "@thia/core";
-import { thia } from "@/thia";
-import { getSessionToken } from "@/session";
+import {
+	AuthUnavailableError,
+	getCurrentSession,
+	loadProfile,
+} from "@/current-session";
 
 export async function GET() {
-	const token = await getSessionToken();
-	if (!token) return NextResponse.json({ user: null }, { status: 401 });
-
 	try {
-		const claims = await thia.verifySession(token);
-		const user = await thia.uow.users.getById(asUserId(claims.sub));
-		if (!user) return NextResponse.json({ user: null }, { status: 401 });
+		const session = await getCurrentSession();
+		if (!session) return NextResponse.json({ user: null }, { status: 401 });
 
-		return NextResponse.json({
-			user: {
-				id: user.id,
-				email: user.email.value,
-				name: user.name.value,
-				image: user.image.value,
-			},
-		});
-	} catch {
-		return NextResponse.json({ user: null }, { status: 401 });
+		// A valid stateless session can outlive its user (see the session
+		// policy guide): the caller is authenticated, but there's no profile.
+		const profile = await loadProfile(session);
+		if (!profile) {
+			return NextResponse.json(
+				{ user: null, error: "profile_not_found" },
+				{ status: 404 }
+			);
+		}
+		return NextResponse.json({ user: profile });
+	} catch (e) {
+		if (!(e instanceof AuthUnavailableError)) throw e;
+		return NextResponse.json(
+			{ error: "service_unavailable" },
+			{ status: 503, headers: { "Retry-After": "5" } }
+		);
 	}
 }

@@ -3,6 +3,8 @@ import { ForbiddenError } from "@thia/authz";
 import { authorizer, getSubject } from "@/authz";
 
 export default async function AdminPage() {
+	// A session/role lookup outage throws AuthUnavailableError: a 500 error
+	// page, never a 401 or a default-role grant.
 	const subject = await getSubject();
 
 	// These render app/unauthorized.tsx and app/forbidden.tsx with real 401/403
@@ -15,7 +17,7 @@ export default async function AdminPage() {
 		if (!(e instanceof ForbiddenError)) throw e;
 		// The denied action is logged rather than shown: the visitor can't act on
 		// it, and it hints at what exists.
-		console.warn(`Denied ${e.action} for ${subject.email}`);
+		console.warn(`Denied ${e.action} for user ${subject.id}`);
 		forbidden();
 	}
 

@@ -1,11 +1,15 @@
 import { createAuthorizer, createRbac } from "@thia/authz";
-import { asUserId } from "@thia/core";
+import type { AuthenticatedSession } from "@thia/core";
 import { thia } from "@/thia";
-import { getSessionToken } from "@/session";
+import {
+	AuthUnavailableError,
+	getCurrentSession,
+} from "@/current-session";
+import { describeAuthError } from "@/auth-errors";
 
+/** Who is acting and their current roles - no profile data. */
 export type Subject = {
 	id: string;
-	email: string;
 	roles: string[];
 };
 
@@ -25,24 +29,31 @@ export const authorizer = createAuthorizer({
  */
 const DEFAULT_ROLES = ["viewer"];
 
-/** The signed-in user as an authorization subject, or null if signed out. */
+/**
+ * The signed-in user as an authorization subject, or null if signed out.
+ * Throws AuthUnavailableError if the session or roles can't be read.
+ */
 export async function getSubject(): Promise<Subject | null> {
-	const token = await getSessionToken();
-	if (!token) return null;
+	const session = await getCurrentSession();
+	return session ? subjectFor(session) : null;
+}
 
+/**
+ * Roles are always read from the database, in both session modes, so a
+ * grant or revocation applies on the next check; roles in the token are
+ * never trusted. A failed lookup is an error, not "no roles" - it must not
+ * fall through to the default role.
+ */
+export async function subjectFor(session: AuthenticatedSession): Promise<Subject> {
+	let assigned: string[];
 	try {
-		const claims = await thia.verifySession(token);
-		const user = await thia.uow.users.getById(asUserId(claims.sub));
-		if (!user) return null;
-
-		const assigned = await thia.roleStore.getRoles(user.id);
-		return {
-			id: user.id,
-			email: user.email.value,
-			roles: assigned.length > 0 ? assigned : DEFAULT_ROLES,
-		};
-	} catch {
-		// invalid/expired session token — treat as signed out
-		return null;
+		assigned = await thia.roleStore.getRoles(session.identity.userId);
+	} catch (e) {
+		console.error("Role lookup failed:", describeAuthError(e));
+		throw new AuthUnavailableError();
 	}
+	return {
+		id: session.identity.userId,
+		roles: assigned.length > 0 ? assigned : DEFAULT_ROLES,
+	};
 }

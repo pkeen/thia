@@ -1,6 +1,8 @@
 import type {
+	AuthenticatedSession,
 	GoogleConfig,
 	OAuthTransaction,
+	SessionPolicy,
 	UnitOfWork,
 	UserRepository,
 } from "@thia/core";
@@ -15,6 +17,9 @@ import {
 	HmacTokenVerifier,
 	beginOAuth,
 	completeOAuth,
+	createSessionValidator,
+	defineSessionPolicy,
+	signOutEverywhere,
 } from "@thia/core";
 import type { RoleStore } from "@thia/authz";
 import {
@@ -23,6 +28,35 @@ import {
 } from "@thia/adapters-drizzle";
 import db from "@/db";
 import { OAUTH_TRANSACTION_TTL_SEC } from "@/oauth-cookies";
+
+/**
+ * The demo's session policy: user-validated JWTs (so "sign out everywhere"
+ * works), 30 minutes. Developers may override either value with
+ * THIA_SESSION_MODE / THIA_SESSION_TTL_SEC; see docs/guides/session-policies.md.
+ */
+export const DEFAULT_SESSION_POLICY: SessionPolicy = {
+	mode: "jwt-user-validated",
+	ttlSec: 30 * 60,
+};
+
+/**
+ * The session policy from trusted server configuration (never a request or
+ * token). Blank variables mean "use the default"; anything else must be
+ * valid or this throws, so a bad deploy fails at startup.
+ */
+export function sessionPolicyFromEnv(
+	env: Record<string, string | undefined>
+): SessionPolicy {
+	const mode = env.THIA_SESSION_MODE || DEFAULT_SESSION_POLICY.mode;
+	const ttl = env.THIA_SESSION_TTL_SEC;
+	// Digits only: Number() would also accept "1e3", " 60" or "0x3c".
+	const ttlSec = !ttl
+		? DEFAULT_SESSION_POLICY.ttlSec
+		: /^[0-9]{1,6}$/.test(ttl)
+			? Number(ttl)
+			: Number.NaN;
+	return defineSessionPolicy({ mode, ttlSec });
+}
 
 export type ThiaOptions = {
 	env?: Record<string, string | undefined>;
@@ -52,10 +86,12 @@ export function createThia(options: ThiaOptions = {}) {
 		async rollback() {},
 	};
 
+	const sessionPolicy = sessionPolicyFromEnv(env);
 	const tokenConfig = {
 		issuer: "thia-clean-builder-app",
 		audience: "thia-clean-builder-app",
-		ttlSec: 60 * 30,
+		// Token expiry, and through it the session cookie's expiry.
+		ttlSec: sessionPolicy.ttlSec,
 		policyVersion: 1,
 	};
 
@@ -69,6 +105,13 @@ export function createThia(options: ThiaOptions = {}) {
 	const verifier = new HmacTokenVerifier(authSecret, {
 		issuer: tokenConfig.issuer,
 		audience: tokenConfig.audience,
+		clock,
+	});
+	const sessions = createSessionValidator({
+		policy: sessionPolicy,
+		verifier,
+		clock,
+		users: uow.users,
 	});
 	const sealer = new JoseOAuthTransactionSealer(authSecret, {
 		maxAgeSec: OAUTH_TRANSACTION_TTL_SEC,
@@ -105,6 +148,7 @@ export function createThia(options: ThiaOptions = {}) {
 		uow,
 		roleStore,
 		redirectUriFor,
+		sessionPolicy,
 
 		/**
 		 * Starts a login: returns the provider URL and the transaction sealed
@@ -141,8 +185,23 @@ export function createThia(options: ThiaOptions = {}) {
 			);
 		},
 
-		async verifySession(token: string) {
-			return verifier.verify(token);
+		/**
+		 * The one session check used by pages, the authorization subject loader
+		 * and API routes. Authentication only - roles are looked up separately.
+		 */
+		async validateSession(token: string | null | undefined) {
+			return sessions.validate(token);
+		},
+
+		/**
+		 * Invalidates every existing token of the session's user (user-validated
+		 * mode only; "unsupported" otherwise). Storage errors propagate.
+		 */
+		async signOutEverywhere(session: AuthenticatedSession) {
+			return signOutEverywhere(
+				{ policy: sessionPolicy, users: uow.users },
+				session
+			);
 		},
 	};
 }

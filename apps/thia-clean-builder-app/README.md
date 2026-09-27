@@ -21,6 +21,8 @@ pnpm --filter thia-clean-builder-app dev   # http://localhost:3000
 | `GITHUB_REDIRECT_URI` | e.g. `http://localhost:3000/api/thia/redirect/github`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From a Google OAuth client of type "Web application". |
 | `GOOGLE_REDIRECT_URI` | e.g. `http://localhost:3000/api/thia/redirect/google`. |
+| `THIA_SESSION_MODE` | Optional. `jwt-user-validated` (default) or `jwt-stateless`. See [Sessions](#sessions). |
+| `THIA_SESSION_TTL_SEC` | Optional. Session lifetime in whole seconds, 60–86400 (default 1800). |
 
 Provider callback configuration must match exactly:
 
@@ -41,6 +43,31 @@ any instance can finish a login another started, including after a restart
 or deploy, **provided every instance has the same `AUTH_SECRET` and provider
 configuration**. Rotating `AUTH_SECRET` signs everyone out and fails any
 login started under the old secret (the user just starts again).
+
+## Sessions
+
+After login the app sets an HttpOnly, SameSite=Lax `thia_session` cookie
+holding a signed JWT. The cookie and the token expire at the same time,
+after `THIA_SESSION_TTL_SEC` (30 minutes by default). Every page and API
+route checks it through the same core validator
+(`current-session.ts` → `thia.validateSession`).
+
+- **`jwt-user-validated`** (default): each request also loads the user and
+  checks the token's version against the database. Deleted users and
+  **Sign out everywhere** take effect on the next request.
+- **`jwt-stateless`**: the verified token alone authenticates. Revoked tokens
+  and deleted users stay valid until they expire, and the home page hides
+  Sign out everywhere.
+
+In both modes, roles are read from the database on every authorization check.
+If the database is unavailable, APIs return 503 and pages show the error page,
+never a signed-out page or a default role. **Sign out of this browser** only
+removes this browser's cookie. **Sign out everywhere** invalidates every
+session for the account, but not the GitHub or Google session. Invalid values
+stop the app at startup. See the
+[session policies guide](../../docs/guides/session-policies.md) for the full
+comparison, CSRF handling and what happens to existing tokens when you change
+the policy.
 
 ## How OAuth login works
 
@@ -128,10 +155,14 @@ credentials configured:
    approve) — the login completes.
 7. **Replay:** after a successful login, reload the callback URL from history
    → `invalid_transaction` (cookie gone); no second session is created.
+8. **Sign out everywhere** (default policy): sign in on two browsers, click
+   *Sign out everywhere* in one → it lands on `/?signed_out=everywhere`, and
+   the other browser is signed out on its next request. Signing in again works.
 
 ## Tests
 
 ```bash
 pnpm --filter @thia/core test              # PKCE, sealer, use cases, providers
-pnpm --filter thia-clean-builder-app test  # routes end to end, mocked providers
+pnpm --filter thia-clean-builder-app test  # routes end to end, mocked providers; session policies
+pnpm --filter @thia/adapters-drizzle test  # needs Docker: Postgres repos, token-version concurrency
 ```

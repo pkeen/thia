@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { asUserId, EmailAddress, User } from "@thia/core";
+import {
+	aUser,
+	authenticated,
+	unauthenticated,
+	unavailable,
+} from "./support/sessions";
 
 const thia = vi.hoisted(() => ({
-	verifySession: vi.fn(),
+	validateSession: vi.fn(),
+	sessionPolicy: { mode: "jwt-user-validated", ttlSec: 1800 },
 	uow: { users: { getById: vi.fn() } },
 	roleStore: { getRoles: vi.fn() },
 }));
@@ -22,22 +28,25 @@ const { default: Unauthorized } = await import("@/app/unauthorized");
 const render = async (page: Promise<React.ReactElement>) =>
 	renderToStaticMarkup(await page);
 
-function signedInAs(email: string, assignedRoles: string[] = []) {
+type Mode = "jwt-stateless" | "jwt-user-validated";
+
+function signedInAs(email: string, assignedRoles: string[] = [], mode: Mode = "jwt-user-validated") {
+	thia.sessionPolicy.mode = mode;
 	thia.roleStore.getRoles.mockResolvedValue(assignedRoles);
 	cookieStore.get.mockReturnValue({ value: "jwt.value" });
-	thia.verifySession.mockResolvedValue({ sub: "01USER0000000000000000000" });
-	thia.uow.users.getById.mockResolvedValue(
-		User.create({
-			id: asUserId("01USER0000000000000000000"),
-			email: EmailAddress.create(email),
-		})
-	);
+	thia.validateSession.mockResolvedValue(authenticated(mode, aUser(email)));
+	thia.uow.users.getById.mockResolvedValue(aUser(email));
 }
 
-const signedOut = () => cookieStore.get.mockReturnValue(undefined);
+const signedOut = () => {
+	cookieStore.get.mockReturnValue(undefined);
+	thia.validateSession.mockResolvedValue(unauthenticated("missing_token"));
+};
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	thia.sessionPolicy.mode = "jwt-user-validated";
+	vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("home page", () => {
@@ -64,6 +73,50 @@ describe("home page", () => {
 
 		signedInAs("someone@example.com");
 		expect(await render(Home())).not.toContain('href="/thia/admin"');
+	});
+
+	it("offers sign out everywhere in user-validated mode, distinct from local sign-out", async () => {
+		signedInAs("someone@example.com");
+		const html = await render(Home());
+
+		expect(html).toContain('action="/api/thia/logout"');
+		expect(html).toContain('action="/api/thia/sign-out-everywhere"');
+		expect(html).toContain('method="post"');
+		expect(html).toContain("from this browser only");
+		expect(html).toContain("does not sign you out of GitHub or Google");
+	});
+
+	it("hides sign out everywhere in stateless mode and says why", async () => {
+		signedInAs("someone@example.com", [], "jwt-stateless");
+		const html = await render(Home());
+
+		expect(html).toContain('action="/api/thia/logout"');
+		expect(html).not.toContain("/api/thia/sign-out-everywhere");
+		expect(html).toContain("Sign out everywhere is unavailable");
+		expect(html).toContain("copied session token stays valid until it expires");
+	});
+
+	it("still shows a stateless session whose profile is gone", async () => {
+		signedInAs("someone@example.com", [], "jwt-stateless");
+		thia.uow.users.getById.mockResolvedValue(null);
+
+		expect(await render(Home())).toContain("no profile found");
+	});
+
+	it("confirms a completed sign out everywhere", async () => {
+		signedOut();
+		const html = await render(Home({ searchParams: Promise.resolve({ signed_out: "everywhere" }) }));
+
+		expect(html).toContain("signed out of this app on all devices");
+		expect(html).toContain('href="/thia/login"');
+	});
+
+	it("fails with an error, not a signed-out page, when the session can't be checked", async () => {
+		const { AuthUnavailableError } = await import("@/current-session");
+		cookieStore.get.mockReturnValue({ value: "jwt.value" });
+		thia.validateSession.mockResolvedValue(unavailable());
+
+		await expect(render(Home())).rejects.toBeInstanceOf(AuthUnavailableError);
 	});
 });
 
@@ -110,14 +163,22 @@ describe("admin page", () => {
 		);
 	});
 
-	it("treats a forged session as signed out", async () => {
+	it("treats a forged or revoked session as signed out", async () => {
 		thia.roleStore.getRoles.mockResolvedValue([]);
 		cookieStore.get.mockReturnValue({ value: "tampered" });
-		thia.verifySession.mockRejectedValue(new Error("signature mismatch"));
+		thia.validateSession.mockResolvedValue(unauthenticated("invalid_token"));
 
 		await expect(accessDigest(AdminPage())).resolves.toBe(
 			"NEXT_HTTP_ERROR_FALLBACK;401"
 		);
+	});
+
+	it("errors (500) rather than 401 or a default role when roles can't be read", async () => {
+		const { AuthUnavailableError } = await import("@/current-session");
+		signedInAs("boss@example.com", ["admin"]);
+		thia.roleStore.getRoles.mockRejectedValue(new Error("db down"));
+
+		await expect(render(AdminPage())).rejects.toBeInstanceOf(AuthUnavailableError);
 	});
 });
 
