@@ -16,7 +16,8 @@ export async function issueAccessToken(
 		audience: string;
 		ttlSec: number;
 	},
-	user: User
+	user: User,
+	options: { sessionId?: string } = {}
 ) {
 	const claims = makeAuthClaims({
 		iss: deps.issuer,
@@ -29,6 +30,7 @@ export async function issueAccessToken(
 		now: deps.clock.now(),
 		ttlSec: deps.ttlSec,
 		jti: deps.ids.jti(),
+		sid: options.sessionId,
 	});
 	const jwt = await deps.signer.sign(claims);
 	return Keycard.create({

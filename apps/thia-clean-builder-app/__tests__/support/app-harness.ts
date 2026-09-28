@@ -18,7 +18,7 @@ import {
 	generateKeyPair,
 	type KeyLike,
 } from "jose";
-import { InMemoryUserRepo } from "@thia/core";
+import { InMemorySessionRepo, InMemoryUserRepo } from "@thia/core";
 
 // ---------------------------------------------------------------------------
 // Persistent state shared by all app instances: the "database" and the
@@ -26,6 +26,7 @@ import { InMemoryUserRepo } from "@thia/core";
 
 export const shared = {
 	users: undefined as unknown as InMemoryUserRepo,
+	sessions: undefined as unknown as InMemorySessionRepo,
 	roles: new Map<string, string[]>(),
 	googleJwks: undefined as unknown,
 	instancesCreated: 0,
@@ -61,7 +62,12 @@ export const ENV = {
 	GOOGLE_CLIENT_ID: "go-client.apps.googleusercontent.com",
 	GOOGLE_CLIENT_SECRET: "go-client-secret",
 	GOOGLE_REDIRECT_URI: "http://localhost:3000/api/thia/redirect/google",
+	// Sprint 001 suites run with refresh off, as before it existed; refresh
+	// tests turn it on explicitly (the demo's own default is on).
+	THIA_SESSION_REFRESH: "off",
 };
+/** Refresh on, with the demo's default lifetimes. */
+export const REFRESH_ON = { THIA_SESSION_REFRESH: "on" };
 export const APP = "http://localhost:3000";
 
 /**
@@ -74,6 +80,8 @@ export async function bootApp(env: Record<string, string> = {}) {
 	// Optional settings from an earlier boot mustn't leak into this one.
 	delete process.env.THIA_SESSION_MODE;
 	delete process.env.THIA_SESSION_TTL_SEC;
+	delete process.env.THIA_SESSION_REFRESH_IDLE_SEC;
+	delete process.env.THIA_SESSION_REFRESH_ABSOLUTE_SEC;
 	Object.assign(process.env, ENV, env);
 	// Re-registered per boot so the real @/thia module is evaluated afresh;
 	// only its storage and Google's key source are substituted.
@@ -84,6 +92,7 @@ export async function bootApp(env: Record<string, string> = {}) {
 			...actual,
 			thia: actual.createThia({
 				users: shared.users,
+				sessions: shared.sessions,
 				roleStore: {
 					getRoles: async (id: string) => shared.roles.get(id) ?? [],
 					assign: async () => {},
@@ -103,6 +112,10 @@ export async function bootApp(env: Record<string, string> = {}) {
 	const logout = await import("@/app/api/thia/logout/route");
 	const everywhere = await import("@/app/api/thia/sign-out-everywhere/route");
 	const home = await import("@/app/page");
+	const devices = await import("@/app/thia/devices/page");
+	const refreshRoute = await import("@/app/api/thia/refresh/route");
+	const revokeRoute = await import("@/app/api/thia/sessions/revoke/route");
+	const proxyModule = await import("@/proxy");
 	const admin = await import("@/app/thia/admin/page");
 	const authz = await import("@/authz");
 	expect(shared.instancesCreated).toBe(before + 1);
@@ -118,8 +131,12 @@ export async function bootApp(env: Record<string, string> = {}) {
 			actAs(browser);
 			return me.GET();
 		},
-		logout: (browser: Browser) =>
-			logout.POST(browser.request(`${APP}/api/thia/logout`, { method: "POST", headers: { origin: APP } })),
+		logout: (browser: Browser) => {
+			actAs(browser);
+			return logout.POST(
+				browser.request(`${APP}/api/thia/logout`, { method: "POST", headers: { origin: APP } })
+			);
+		},
 		signOutEverywhere: (
 			browser: Browser,
 			init: { headers?: Record<string, string>; body?: string; query?: string } = {}
@@ -137,6 +154,63 @@ export async function bootApp(env: Record<string, string> = {}) {
 		home: async (browser: Browser, searchParams: Record<string, string> = {}) => {
 			actAs(browser);
 			return renderToStaticMarkup(await home.default({ searchParams: Promise.resolve(searchParams) }));
+		},
+		/**
+		 * Sends a GET for `path` through proxy.ts, as Next.js would before the
+		 * page or route runs: Set-Cookie goes to the browser, and the cookies
+		 * the proxy forwarded come back as the view the page sees. A 503 from
+		 * the proxy is returned as `blocked`.
+		 */
+		visit: async (
+			browser: Browser,
+			path = "/"
+		): Promise<{ view: Browser; blocked?: undefined } | { blocked: Response; view?: undefined }> => {
+			const sent = new Map(browser.jar);
+			const res = await proxyModule.proxy(browser.request(`${APP}${path}`));
+			browser.receive(res as NextResponse);
+			if (res.status !== 200) return { blocked: res };
+			const view = new Browser();
+			const forwarded = res.headers.get("x-middleware-request-cookie");
+			if (forwarded === null) view.jar = sent;
+			else {
+				for (const pair of forwarded.split(/;\s*/).filter(Boolean)) {
+					const i = pair.indexOf("=");
+					view.jar.set(pair.slice(0, i), pair.slice(i + 1));
+				}
+			}
+			return { view };
+		},
+		/** The devices page's HTML, or the 401 it interrupted with. */
+		devices: async (browser: Browser, searchParams: Record<string, string> = {}) => {
+			actAs(browser);
+			try {
+				return renderToStaticMarkup(
+					await devices.default({ searchParams: Promise.resolve(searchParams) })
+				);
+			} catch (e) {
+				if ((e as { digest?: string }).digest === "NEXT_HTTP_ERROR_FALLBACK;401") return 401 as const;
+				throw e;
+			}
+		},
+		refresh: (browser: Browser, headers: Record<string, string> = { origin: APP }) => {
+			actAs(browser);
+			return refreshRoute.POST(
+				browser.request(`${APP}/api/thia/refresh`, { method: "POST", headers })
+			);
+		},
+		revokeDevice: (
+			browser: Browser,
+			sessionId: string,
+			headers: Record<string, string> = { origin: APP }
+		) => {
+			actAs(browser);
+			return revokeRoute.POST(
+				browser.request(`${APP}/api/thia/sessions/revoke`, {
+					method: "POST",
+					headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+					body: new URLSearchParams({ session: sessionId }).toString(),
+				})
+			);
 		},
 		/** The admin page's HTML, or the 401/403 status it interrupted with. */
 		admin: async (browser: Browser): Promise<string | 401 | 403> => {
@@ -334,6 +408,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	shared.users = new InMemoryUserRepo();
+	shared.sessions = new InMemorySessionRepo();
 	shared.roles.clear();
 	installNetwork();
 });

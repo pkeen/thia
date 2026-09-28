@@ -55,6 +55,11 @@ export type CompleteOAuthDeps<E = {}> = {
 	ttlSec: number;
 	policyVersion: number;
 	enrichUser?: (u: UserPublic) => Promise<E> | E;
+	/**
+	 * Issues the signed-in user's keycards in place of a single access token,
+	 * e.g. `startSession` when refresh is enabled (access + refresh keycards).
+	 */
+	issueKeycards?: (user: User) => Promise<Keycard[]>;
 	callbacks?: { onUserCreated?: (u: User) => void | Promise<void> };
 	/**
 	 * What to do when a sign-in's email matches an existing user who hasn't
@@ -161,24 +166,28 @@ export async function completeOAuth<E = {}>(
 
 	if (isNewUser) await deps.callbacks?.onUserCreated?.(user);
 
-	const keycard = await issueAccessToken(
-		{
-			signer: deps.signer,
-			clock: deps.clock,
-			ids: deps.ids,
-			policyVersion: deps.policyVersion,
-			issuer: deps.issuer,
-			audience: deps.audience,
-			ttlSec: deps.ttlSec,
-		},
-		user
-	);
+	const keycards = deps.issueKeycards
+		? await deps.issueKeycards(user)
+		: [
+				await issueAccessToken(
+					{
+						signer: deps.signer,
+						clock: deps.clock,
+						ids: deps.ids,
+						policyVersion: deps.policyVersion,
+						issuer: deps.issuer,
+						audience: deps.audience,
+						ttlSec: deps.ttlSec,
+					},
+					user
+				),
+			];
 
 	const publicUser = sanitizeUser(user);
 	const extra = deps.enrichUser ? await deps.enrichUser(publicUser) : ({} as E);
 
 	return {
 		user: { ...publicUser, ...extra },
-		keycards: [keycard],
+		keycards,
 	};
 }

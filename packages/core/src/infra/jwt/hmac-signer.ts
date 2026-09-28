@@ -37,6 +37,7 @@ export class HmacTokenSigner implements TokenSigner {
 	async sign(claims: AuthClaims): Promise<string> {
 		return new SignJWT({
 			jti: claims.jti,
+			sid: claims.sid,
 			ver: claims.ver,
 			uvn: claims.uvn,
 			pvn: claims.pvn,

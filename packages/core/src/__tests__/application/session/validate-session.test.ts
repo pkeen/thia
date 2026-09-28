@@ -108,7 +108,10 @@ describe.each(["jwt-stateless", "jwt-user-validated"] as const)(
 			["a negative uvn", () => signRaw({ ...validPayload(), uvn: -1 })],
 			["a fractional uvn", () => signRaw({ ...validPayload(), uvn: 1.5 })],
 			["a string uvn", () => signRaw({ ...validPayload(), uvn: "0" })],
-			["an unsupported claim schema version", () => signRaw({ ...validPayload(), ver: 2 })],
+			["an unsupported claim schema version", () => signRaw({ ...validPayload(), ver: 3 })],
+			["ver 2 without a session id", () => signRaw({ ...validPayload(), ver: 2 })],
+			["ver 1 with a session id", () => signRaw({ ...validPayload(), sid: "A".repeat(22) })],
+			["a malformed session id", () => signRaw({ ...validPayload(), ver: 2, sid: "short" })],
 			["usr.id differing from sub", () =>
 				signRaw({ ...validPayload(), usr: { id: "01OTHER00000000000000000", emailVerified: true } })],
 			["a malformed subject", () =>

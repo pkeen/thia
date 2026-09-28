@@ -1,8 +1,12 @@
 # Sprint 002: Refresh-token rotation and stored sessions
 
-Status: Ready for implementation
+Status: Completed
 Created: 2026-09-27
-Completed: Not yet completed
+Completed: 2026-09-27
+
+Delivery, verification and remaining limits are recorded in
+[Delivery record](#delivery-record) at the end of this brief. The original brief
+below is unchanged.
 
 ## Outcome
 
@@ -251,3 +255,117 @@ OAuth provider refresh tokens, "remember me" toggles, device fingerprinting or
 geolocation, new-device notifications, admin session management across users,
 bearer-token (non-cookie) clients and mobile SDKs, runtime policy switching,
 and a background cleanup scheduler.
+
+## Delivery record
+
+Completed 2026-09-27 (not yet committed). Decision:
+[ADR-004](../decisions/004-refresh-token-rotation.md). Guide:
+[Session policies](../guides/session-policies.md).
+
+### Decisions taken (confirmed with the developer, recorded in ADR-004)
+
+- Concurrent refresh: a 30-second grace window in which the just-replaced
+  secret gets an access token only, never a new refresh token, and nothing is
+  revoked. Reuse after the window revokes the session.
+- Tokens without `sid` (`ver` 1) stay valid until they expire after refresh is
+  enabled.
+- Lowering the refresh limits caps existing sessions (applied at validation,
+  persisted at the next refresh); raising them never extends sessions.
+- Refresh secrets are stored as HMAC-SHA256 under a key HKDF-derived from
+  `AUTH_SECRET`, so rotating the secret invalidates refresh tokens as well.
+- Renewal runs in Next.js 16 `proxy.ts` (Node.js runtime), with
+  `POST /api/thia/refresh` for client code. The refresh cookie is `Path=/`
+  and `SameSite=Lax` (`__Host-` in production), so it reaches page requests.
+
+### Delivered
+
+- **Policy.** `SessionPolicy.refresh?: { idleTtlSec, absoluteTtlSec }`.
+  Access tokens are 60–3600 s with refresh, idle 1 h–30 d, absolute from idle
+  to 90 d. Unknown keys, inconsistent values and non-objects are rejected.
+  Without `refresh`, behavior is unchanged. Demo default: user-validated,
+  600 s, 7 d idle / 30 d total, with `THIA_SESSION_REFRESH`,
+  `THIA_SESSION_REFRESH_IDLE_SEC` and `THIA_SESSION_REFRESH_ABSOLUTE_SEC`
+  overrides (refresh lifetimes set while it's off is an error).
+- **Core.** `SessionRepository` and `RefreshTokenCrypto` ports;
+  `HmacRefreshTokenCrypto`; `InMemorySessionRepo`; `startSession`,
+  `refreshSession` (compare-and-swap rotation, grace, reuse detection,
+  idle/absolute/capped expiry, user and version checks), `signOutSession`,
+  `listUserSessions`, `revokeUserSession`, `deleteEndedSessions`. Claim schema
+  `ver` 2 with `sid` (runtime-validated; `ver` 1 still accepted).
+  User-validated validation also checks the `sid` session, loading it in
+  parallel with the user. `signOutEverywhere` revokes all sessions and reports
+  `sessions.immediate`; it is now supported in stateless mode with refresh.
+  `completeOAuth` gained an `issueKeycards` hook.
+- **Postgres.** `thia.session` table and migration `0002_sessions`, in both
+  the adapter and the demo app. `PostgresSessionRepository` uses
+  single-statement operations: rotation is a compare-and-swap that ignores
+  revoked rows.
+- **Demo.** Login sets both cookies and records a coarse device label;
+  `proxy.ts` handles renewal (grace, invalid tokens cleared once, 503 on an
+  outage unless the access token is still valid); `/api/thia/refresh`;
+  `/thia/devices` with per-device sign-out (`/api/thia/sessions/revoke`, same
+  origin, own sessions only); logout revokes the current session;
+  sign out everywhere clears both cookies; the home page explains every
+  control and its latency in each mode.
+
+### Verification (run 2026-09-27)
+
+| Command | Outcome |
+| --- | --- |
+| Package builds (core, authz, adapters-drizzle) | Pass |
+| `tsc --noEmit` in core, authz, adapters-drizzle, demo app | Pass (no errors) |
+| `pnpm --filter @thia/core test` | 13 files, 256 tests pass (54 new) |
+| `pnpm --filter @thia/authz test` | 45 tests pass, no type errors |
+| `pnpm --filter @thia/adapters-drizzle test` (Docker Postgres 16) | 3 files, 35 tests pass (10 new) |
+| `pnpm --filter thia-clean-builder-app test` | 7 files, 171 tests pass (36 new in `refresh.test.ts`) |
+| Demo build with CI placeholder env | Pass; lists `ƒ Proxy (Middleware)`, `/thia/devices`, `/api/thia/refresh`, `/api/thia/sessions/revoke` |
+| `eslint` in the demo | Not run: pre-existing ESLint plugin-resolution crash (see Sprint 001) |
+
+Mutation check: removing the compare-and-swap conditions from
+`PostgresSessionRepository.rotate` made four concurrency tests fail; the code
+was restored.
+
+Criterion 1: the Sprint 001 suites run with refresh off and pass. Two test
+files changed only in setup: the harness defaults to
+`THIA_SESSION_REFRESH=off` and its logout helper now sets the request
+cookies. One test that calls `sessionPolicyFromEnv` directly now passes
+`THIA_SESSION_REFRESH: "off"`, because the demo default intentionally
+changed. No Sprint 001 assertion changed.
+
+These tests use in-process fake providers and do not verify live providers.
+
+**Live local check** (developer's `next dev` with `THIA_SESSION_TTL_SEC=120`,
+Neon database, real GitHub login by the developer):
+
+- Applied `0002_sessions` to Neon with `drizzle-kit migrate` (only that
+  migration ran; it adds a table).
+- Login created one session ("Chrome on macOS") and the home page showed the
+  refresh policy.
+- Loading a page inside the renewal window rotated the stored hash
+  (`rotated_at` set), and the page rendered signed in.
+- The devices page listed this browser (marked) and a second test session
+  created with `startSession` against Neon. Revoking the test session through
+  the revoke form's POST gave a 303, and its access token then returned 401
+  on its next request.
+- Refresh route: rotation returned 204 with both cookies. A replay of the old
+  token within 30 s returned 204 with only an access cookie. A replay after
+  58 s returned 401, cleared both cookies, and marked the session
+  `reuse_detected`. The developer's own session was unaffected.
+- Not established: the first automated click on a devices-page button did
+  not submit the form (the database was unchanged). Submitting the same form
+  from the page worked. The unstyled buttons (Tailwind reset) may explain it;
+  a manual click by a person was not tested.
+
+### Remaining limits
+
+- Only one generation of refresh history is kept, so reuse of older tokens is
+  refused but not detected.
+- Stateless mode with refresh: revocation takes effect at the next renewal,
+  within one access TTL.
+- Sessions revoked or expired accumulate until the application schedules
+  `deleteEndedSessions`.
+- A login that loaded the user before a concurrent sign out everywhere gets a
+  session that fails its first refresh (fail-closed, as in Sprint 001).
+- Deferred as briefed: provider refresh tokens, "remember me", device
+  fingerprinting, notifications, cross-user admin, bearer clients, runtime
+  switching and a cleanup scheduler.

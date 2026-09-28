@@ -3,8 +3,17 @@ import { z } from "zod";
 import { InvalidSessionTokenError } from "../session/errors";
 import { SESSION_TTL_MAX_SEC } from "../session/session-policy";
 
-/** The claim schema version (`ver`) this code issues and accepts. */
+/** Claim schema version (`ver`) of tokens without a stored session. */
 export const AUTH_CLAIMS_VERSION = 1;
+/** Claim schema version of tokens bound to a stored session: adds `sid` (ADR-004). */
+export const AUTH_CLAIMS_VERSION_WITH_SESSION = 2;
+const SUPPORTED_CLAIMS_VERSIONS: readonly number[] = [
+	AUTH_CLAIMS_VERSION,
+	AUTH_CLAIMS_VERSION_WITH_SESSION,
+];
+
+/** Stored-session ids: 22 base64url characters (128 random bits). */
+export const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 /** Allowed clock skew between issuer and verifier, in seconds. */
 export const AUTH_CLAIMS_CLOCK_TOLERANCE_SEC = 5;
@@ -16,6 +25,8 @@ export type AuthClaims = {
 	iat: number;
 	exp: number;
 	jti?: string;
+	/** Stored session id; present exactly when ver = 2. */
+	sid?: string;
 	ver: number; // schema version of claims
 	uvn: number; // user version (tokenVersion)
 	pvn: number; // policy version
@@ -39,6 +50,8 @@ export function makeAuthClaims(args: {
 	now: Date;
 	ttlSec: number;
 	jti?: string;
+	/** Binds the token to a stored session (refresh enabled). */
+	sid?: string;
 }): AuthClaims {
 	const iat = Math.floor(args.now.getTime() / 1000);
 	return {
@@ -48,7 +61,8 @@ export function makeAuthClaims(args: {
 		iat,
 		exp: iat + args.ttlSec,
 		jti: args.jti,
-		ver: AUTH_CLAIMS_VERSION,
+		...(args.sid !== undefined ? { sid: args.sid } : {}),
+		ver: args.sid !== undefined ? AUTH_CLAIMS_VERSION_WITH_SESSION : AUTH_CLAIMS_VERSION,
 		uvn: args.uvn,
 		pvn: args.pvn,
 		usr: {
@@ -72,6 +86,7 @@ const AuthClaimsSchema = z
 		iat: timestamp,
 		exp: timestamp,
 		jti: z.string().min(1).max(128).optional(),
+		sid: z.string().regex(SESSION_ID_PATTERN).optional(),
 		ver: z.number(),
 		uvn: counter,
 		pvn: counter,
@@ -83,12 +98,17 @@ const AuthClaimsSchema = z
 			scopes: z.array(z.string()).optional(),
 		}),
 	})
-	.refine((c) => c.usr.id === c.sub, "usr.id must equal sub");
+	.refine((c) => c.usr.id === c.sub, "usr.id must equal sub")
+	.refine(
+		(c) => (c.ver === AUTH_CLAIMS_VERSION_WITH_SESSION) === (c.sid !== undefined),
+		"sid is required in ver 2 and not allowed in ver 1"
+	);
 
 /**
  * Runtime validation of an already signature-checked JWT payload. Throws
  * InvalidSessionTokenError unless every required claim is present with the
- * right type, the schema version is supported, `usr.id` matches `sub`, and
+ * right type, the schema version is supported (1, or 2 with `sid`), `usr.id`
+ * matches `sub`, and
  * the timestamps are sane at `now` (with AUTH_CLAIMS_CLOCK_TOLERANCE_SEC):
  * issued no later than now, unexpired, and living no longer than the
  * longest supported session.
@@ -101,14 +121,14 @@ export function parseAuthClaims(payload: unknown, now: Date): AuthClaims {
 		typeof payload === "object" &&
 		payload !== null &&
 		"ver" in payload &&
-		payload.ver !== AUTH_CLAIMS_VERSION
+		!SUPPORTED_CLAIMS_VERSIONS.includes(payload.ver as number)
 	) {
 		throw new InvalidSessionTokenError("unsupported_claims_version");
 	}
 	const result = AuthClaimsSchema.safeParse(payload);
 	if (!result.success) throw new InvalidSessionTokenError("invalid_claims");
 	const c = result.data;
-	if (c.ver !== AUTH_CLAIMS_VERSION) {
+	if (!SUPPORTED_CLAIMS_VERSIONS.includes(c.ver)) {
 		throw new InvalidSessionTokenError("unsupported_claims_version");
 	}
 
@@ -130,6 +150,7 @@ export function parseAuthClaims(payload: unknown, now: Date): AuthClaims {
 		iat: c.iat,
 		exp: c.exp,
 		jti: c.jti,
+		...(c.sid !== undefined ? { sid: c.sid } : {}),
 		ver: c.ver,
 		uvn: c.uvn,
 		pvn: c.pvn,

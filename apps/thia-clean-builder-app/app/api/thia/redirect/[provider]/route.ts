@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { oauthTransactionMatches } from "@thia/core";
 import { thia } from "@/thia";
-import { setSessionCookie } from "@/session";
+import { setRefreshCookie, setSessionCookie } from "@/session";
+import { deviceLabel } from "@/device-label";
 import { describeAuthError } from "@/auth-errors";
 import { safeReturnTo } from "@/return-to";
 import {
@@ -69,11 +70,15 @@ export async function GET(
 			provider,
 			code,
 			state,
-			transaction
+			transaction,
+			{ deviceLabel: deviceLabel(req.headers.get("user-agent")) }
 		);
 		const destination = safeReturnTo(transaction.returnTo) ?? "/";
 		const response = NextResponse.redirect(new URL(destination, req.url));
+		// [access] without refresh; [access, refresh] with it.
 		setSessionCookie(response, keycards[0]);
+		const refresh = keycards.find((k) => k.type === "refresh");
+		if (refresh) setRefreshCookie(response, refresh);
 		return finish(response);
 	} catch (e) {
 		if (e instanceof Error && e.message === "ACCOUNT_LINK_CONFLICT") {

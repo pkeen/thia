@@ -80,3 +80,7 @@ Consider revisiting if integrators need per-device sessions or revocation,
 refresh tokens, inactivity timeouts, or runtime policy switching. A
 stored-session mode would be a new decision. It must not be added silently
 as a third mode.
+
+Update 2026-09-27: refresh tokens and stored sessions were added as an
+optional policy capability, not a third mode. See
+[ADR-004](004-refresh-token-rotation.md).

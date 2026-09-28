@@ -3,6 +3,7 @@ import type {
 	GoogleConfig,
 	OAuthTransaction,
 	SessionPolicy,
+	SessionRepository,
 	UnitOfWork,
 	UserRepository,
 } from "@thia/core";
@@ -19,25 +20,44 @@ import {
 	completeOAuth,
 	createSessionValidator,
 	defineSessionPolicy,
+	SessionPolicyError,
 	signOutEverywhere,
+	HmacRefreshTokenCrypto,
+	startSession,
+	refreshSession,
+	signOutSession,
+	listUserSessions,
+	revokeUserSession,
+	deleteEndedSessions,
 } from "@thia/core";
 import type { RoleStore } from "@thia/authz";
 import {
 	PostgresRoleStore,
+	PostgresSessionRepository,
 	PostgresUserRepository,
 } from "@thia/adapters-drizzle";
 import db from "@/db";
 import { OAUTH_TRANSACTION_TTL_SEC } from "@/oauth-cookies";
 
 /**
- * The demo's session policy: user-validated JWTs (so "sign out everywhere"
- * works), 30 minutes. Developers may override either value with
- * THIA_SESSION_MODE / THIA_SESSION_TTL_SEC; see docs/guides/session-policies.md.
+ * The demo's session policy: user-validated JWTs (so sign-outs apply on the
+ * next request) lasting 10 minutes, renewed by rotating refresh tokens for
+ * up to 7 idle / 30 total days. Every value can be overridden with the
+ * THIA_SESSION_* variables; see docs/guides/session-policies.md.
  */
 export const DEFAULT_SESSION_POLICY: SessionPolicy = {
 	mode: "jwt-user-validated",
-	ttlSec: 30 * 60,
+	ttlSec: 10 * 60,
+	refresh: { idleTtlSec: 7 * 24 * 60 * 60, absoluteTtlSec: 30 * 24 * 60 * 60 },
 };
+/** Access-token lifetime when refresh is turned off (Sprint 001 default). */
+export const DEFAULT_TTL_WITHOUT_REFRESH_SEC = 30 * 60;
+
+/** Digits only: Number() would also accept "1e3", " 60" or "0x3c". */
+function seconds(value: string | undefined, fallback: number) {
+	if (!value) return fallback;
+	return /^[0-9]{1,8}$/.test(value) ? Number(value) : Number.NaN;
+}
 
 /**
  * The session policy from trusted server configuration (never a request or
@@ -48,14 +68,31 @@ export function sessionPolicyFromEnv(
 	env: Record<string, string | undefined>
 ): SessionPolicy {
 	const mode = env.THIA_SESSION_MODE || DEFAULT_SESSION_POLICY.mode;
-	const ttl = env.THIA_SESSION_TTL_SEC;
-	// Digits only: Number() would also accept "1e3", " 60" or "0x3c".
-	const ttlSec = !ttl
-		? DEFAULT_SESSION_POLICY.ttlSec
-		: /^[0-9]{1,6}$/.test(ttl)
-			? Number(ttl)
-			: Number.NaN;
-	return defineSessionPolicy({ mode, ttlSec });
+	const switchValue = env.THIA_SESSION_REFRESH || "on";
+	if (switchValue !== "on" && switchValue !== "off") {
+		throw new SessionPolicyError('THIA_SESSION_REFRESH must be "on" or "off"');
+	}
+
+	if (switchValue === "off") {
+		if (env.THIA_SESSION_REFRESH_IDLE_SEC || env.THIA_SESSION_REFRESH_ABSOLUTE_SEC) {
+			throw new SessionPolicyError(
+				"THIA_SESSION_REFRESH_* lifetimes are set but THIA_SESSION_REFRESH is off"
+			);
+		}
+		return defineSessionPolicy({
+			mode,
+			ttlSec: seconds(env.THIA_SESSION_TTL_SEC, DEFAULT_TTL_WITHOUT_REFRESH_SEC),
+		});
+	}
+	const defaults = DEFAULT_SESSION_POLICY.refresh!;
+	return defineSessionPolicy({
+		mode,
+		ttlSec: seconds(env.THIA_SESSION_TTL_SEC, DEFAULT_SESSION_POLICY.ttlSec),
+		refresh: {
+			idleTtlSec: seconds(env.THIA_SESSION_REFRESH_IDLE_SEC, defaults.idleTtlSec),
+			absoluteTtlSec: seconds(env.THIA_SESSION_REFRESH_ABSOLUTE_SEC, defaults.absoluteTtlSec),
+		},
+	});
 }
 
 export type ThiaOptions = {
@@ -63,6 +100,7 @@ export type ThiaOptions = {
 	/** Test seams; production uses Postgres and Google's published keys. */
 	users?: UserRepository;
 	roleStore?: RoleStore;
+	sessions?: SessionRepository;
 	googleJwks?: GoogleConfig["jwks"];
 };
 
@@ -107,11 +145,38 @@ export function createThia(options: ThiaOptions = {}) {
 		audience: tokenConfig.audience,
 		clock,
 	});
+	// Stored sessions exist only with refresh enabled (ADR-004). Refresh
+	// secrets are HMAC'd with a key derived from AUTH_SECRET.
+	const sessionStore: SessionRepository | undefined = sessionPolicy.refresh
+		? (options.sessions ?? PostgresSessionRepository(db))
+		: undefined;
+	const refreshCrypto = sessionPolicy.refresh
+		? new HmacRefreshTokenCrypto(authSecret)
+		: undefined;
+	const refreshDeps = () => {
+		if (!sessionStore || !refreshCrypto) {
+			throw new Error("Refresh tokens are not enabled");
+		}
+		return {
+			policy: sessionPolicy,
+			sessions: sessionStore,
+			crypto: refreshCrypto,
+			users: uow.users,
+			signer,
+			clock,
+			ids,
+			issuer: tokenConfig.issuer,
+			audience: tokenConfig.audience,
+			policyVersion: tokenConfig.policyVersion,
+		};
+	};
+
 	const sessions = createSessionValidator({
 		policy: sessionPolicy,
 		verifier,
 		clock,
 		users: uow.users,
+		sessions: sessionStore,
 	});
 	const sealer = new JoseOAuthTransactionSealer(authSecret, {
 		maxAgeSec: OAUTH_TRANSACTION_TTL_SEC,
@@ -173,16 +238,66 @@ export function createThia(options: ThiaOptions = {}) {
 			return sealer.unseal(sealed, clock.now());
 		},
 
+		/**
+		 * Finishes a login. With refresh enabled this also starts a stored
+		 * session: keycards are then [access, refresh].
+		 */
 		async completeLogin(
 			provider: string,
 			code: string,
 			state: string,
-			transaction: OAuthTransaction | undefined
+			transaction: OAuthTransaction | undefined,
+			context: { deviceLabel?: string | null } = {}
 		) {
 			return completeOAuth(
-				{ registry, uow, ids, clock, signer, ...tokenConfig },
+				{
+					registry,
+					uow,
+					ids,
+					clock,
+					signer,
+					...tokenConfig,
+					issueKeycards: sessionPolicy.refresh
+						? async (user) => {
+								const issued = await startSession(refreshDeps(), user, context);
+								return [issued.access, issued.refresh];
+							}
+						: undefined,
+				},
 				{ provider, code, state, transaction }
 			);
+		},
+
+		/** Rotates a refresh token (ADR-004). Storage errors propagate. */
+		async refreshSession(refreshToken: string | null | undefined) {
+			return refreshSession(refreshDeps(), refreshToken);
+		},
+
+		/**
+		 * Ordinary sign-out: revokes this browser's stored session when refresh
+		 * is enabled (a no-op otherwise). Storage errors propagate.
+		 */
+		async signOut(input: {
+			session?: AuthenticatedSession | null;
+			refreshToken?: string | null;
+		}) {
+			if (!sessionStore || !refreshCrypto) return { revoked: false };
+			return signOutSession({ sessions: sessionStore, crypto: refreshCrypto, clock }, input);
+		},
+
+		/** The caller's active sessions (devices). Requires refresh. */
+		async listSessions(session: AuthenticatedSession) {
+			return listUserSessions(refreshDeps(), session);
+		},
+
+		/** Signs one of the caller's own devices out. Requires refresh. */
+		async revokeSession(session: AuthenticatedSession, sessionId: string) {
+			return revokeUserSession(refreshDeps(), session, sessionId);
+		},
+
+		/** Housekeeping to schedule: deletes long-ended session rows. */
+		async deleteEndedSessions(retentionSec?: number) {
+			return deleteEndedSessions(refreshDeps(), { retentionSec });
 		},
 
 		/**
@@ -199,7 +314,7 @@ export function createThia(options: ThiaOptions = {}) {
 		 */
 		async signOutEverywhere(session: AuthenticatedSession) {
 			return signOutEverywhere(
-				{ policy: sessionPolicy, users: uow.users },
+				{ policy: sessionPolicy, users: uow.users, sessions: sessionStore, clock },
 				session
 			);
 		},

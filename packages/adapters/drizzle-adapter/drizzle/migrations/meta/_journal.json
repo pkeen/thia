@@ -15,6 +15,13 @@
       "when": 1790435944319,
       "tag": "0001_cloudy_vargas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790535742268,
+      "tag": "0002_sessions",
+      "breakpoints": true
     }
   ]
 }

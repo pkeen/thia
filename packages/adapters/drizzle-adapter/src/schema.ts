@@ -9,6 +9,7 @@ import {
 	primaryKey,
 	pgEnum,
 	uuid,
+	index,
 } from "drizzle-orm/pg-core";
 import {
 	GeneratedColumnConfig,
@@ -293,11 +294,41 @@ export function createSchema(namespace = "thia") {
 		})
 	);
 
+	// Stored sessions for refresh-token rotation (ADR-004). Only keyed hashes
+	// of refresh secrets are kept, never the secrets.
+	const sessionTable = ns.table(
+		"session",
+		{
+			id: text("id").primaryKey(),
+			userId: text("user_id")
+				.notNull()
+				.references(() => userTable.id, { onDelete: "cascade" }),
+			tokenHash: text("token_hash").notNull(),
+			previousTokenHash: text("previous_token_hash"),
+			rotatedAt: timestamp("rotated_at", { withTimezone: true, mode: "date" }),
+			userTokenVersion: integer("user_token_version").notNull(),
+			createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+			lastUsedAt: timestamp("last_used_at", { withTimezone: true, mode: "date" }).notNull(),
+			idleExpiresAt: timestamp("idle_expires_at", { withTimezone: true, mode: "date" }).notNull(),
+			absoluteExpiresAt: timestamp("absolute_expires_at", {
+				withTimezone: true,
+				mode: "date",
+			}).notNull(),
+			revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
+			revokedReason: text("revoked_reason"),
+			deviceLabel: text("device_label"),
+		},
+		(table) => ({
+			userIdIndex: index("session_user_id_idx").on(table.userId),
+		})
+	);
+
 	const usersRelations = relations(userTable, ({ many }) => ({
 		accounts: many(accountTable),
 		roles: many(userRoleTable),
+		sessions: many(sessionTable),
 	}));
-	return { ns, userTable, accountTable, userRoleTable };
+	return { ns, userTable, accountTable, userRoleTable, sessionTable };
 }
 
 export type DefaultPostgresSchema = ReturnType<typeof createSchema>;
@@ -308,6 +339,8 @@ export type AccountTable = DefaultPostgresSchema["accountTable"];
 export type AccountRow = InferSelectModel<AccountTable>;
 export type UserRoleTable = DefaultPostgresSchema["userRoleTable"];
 export type UserRoleRow = InferSelectModel<UserRoleTable>;
+export type SessionTable = DefaultPostgresSchema["sessionTable"];
+export type SessionRow = InferSelectModel<SessionTable>;
 
 // type DefaultPostgresColumn<
 // 	T extends {
