@@ -151,9 +151,10 @@ are written. With it:
   Every renewal **rotates** the refresh token; each one works once. Client
   code can also call `POST /api/thia/refresh` (same-origin only).
 - **Concurrent requests.** If two requests renew with the same refresh token,
-  one rotates. For 30 seconds, the replaced token still gets a new access
-  token, but not a new refresh token, so nobody is signed out by a race.
-- **Reuse detection.** Presenting a replaced refresh token after those 30
+  one rotates. For 10 seconds, the replaced token still gets a new access
+  token (valid for at most 120 seconds), but not a new refresh token, so
+  nobody is signed out by a race.
+- **Reuse detection.** Presenting a replaced refresh token after those 10
   seconds is treated as theft and revokes that session. Only one generation
   of history is kept: an older token is refused, but doesn't revoke.
 - **Expiry.** Each renewal slides the idle expiry forward, but never past the

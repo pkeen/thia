@@ -47,15 +47,25 @@ time.
 
 - Every successful refresh rotates the secret with a compare-and-swap on the
   current hash, so a token can succeed at most once.
-- Presenting the *previous* secret within a 30-second grace window of its
+- Presenting the *previous* secret within a 10-second grace window of its
   rotation (a benign race: two tabs, or a page and its prefetch) returns a new
-  short-lived access token only. It issues no refresh token, so the chain
-  never forks, and nothing is revoked.
+  access token only, capped at 120 seconds. It issues no refresh token, so the
+  chain never forks, and nothing is revoked.
 - Presenting the previous secret after the grace window is treated as reuse
   and revokes the session.
 - A secret matching neither is refused without revocation, because it could
   be a forgery. Reuse of tokens older than the previous one is therefore not
   detected; only one generation of history is kept.
+
+**Grace window revision (2026-09-28).** The window was first 30 seconds with a
+full-lifetime access token, so a replay of a just-replaced token, which is
+undetected, could yield up to one access TTL (10 minutes in the demo). Only
+requests in flight together can race, since tabs share one cookie jar, so the
+window is now 10 seconds and grace access tokens live at most 120 seconds
+(long enough not to force an immediate renewal). Remaining exposure: a replay
+inside the window still goes undetected and yields one access token of at most
+120 seconds, with no ability to renew. A zero-grace design (the losing request
+retries with the new cookie) would remove it but needs client retry logic.
 
 **Expiry.** A refresh fails once the session is idle-expired or past its
 absolute expiry. On success the idle expiry slides forward but never past the

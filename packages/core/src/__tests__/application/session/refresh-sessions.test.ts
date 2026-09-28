@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+	REFRESH_GRACE_ACCESS_TTL_SEC,
 	REFRESH_REUSE_GRACE_SEC,
 	deleteEndedSessions,
 	listUserSessions,
@@ -209,6 +210,20 @@ describe("refreshSession: reuse detection and the grace window", () => {
 		expect("refresh" in loser).toBe(false);
 		if (loser.status === "grace") await expect(authenticated(ctx, loser.access.value)).resolves.toBeTruthy();
 		expect((await ctx.sessions.getById(issued.sessionId))!.revokedAt).toBeNull();
+	});
+
+	it("caps the lifetime of an access token issued inside the grace window", async () => {
+		const ctx = await setup();
+		const issued = await signedIn(ctx);
+		const winner = await refreshSession(ctx.deps, issued.refresh.value);
+		if (winner.status !== "refreshed") throw new Error();
+		const loser = await refreshSession(ctx.deps, issued.refresh.value);
+		if (loser.status !== "grace") throw new Error();
+
+		const lifetimeSec = (k: { expiresAt?: Date }) => (k.expiresAt!.getTime() - ctx.deps.clock.now().getTime()) / 1000;
+		expect(ctx.deps.policy.ttlSec).toBeGreaterThan(REFRESH_GRACE_ACCESS_TTL_SEC);
+		expect(lifetimeSec(loser.access)).toBeLessThanOrEqual(REFRESH_GRACE_ACCESS_TTL_SEC);
+		expect(lifetimeSec(winner.access)).toBeGreaterThan(REFRESH_GRACE_ACCESS_TTL_SEC);
 	});
 
 	it("revokes the session when a replaced token is reused after the grace window", async () => {

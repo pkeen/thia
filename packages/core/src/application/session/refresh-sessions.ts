@@ -19,8 +19,16 @@ import type { AuthenticatedSession } from "./validate-session";
  * How long a just-replaced refresh secret may still obtain an access token
  * (never a refresh token), so concurrent requests from one browser don't
  * trip reuse detection. After this, presenting it revokes the session.
+ * Only requests in flight at the same moment can race, so this is short.
  */
-export const REFRESH_REUSE_GRACE_SEC = 30;
+export const REFRESH_REUSE_GRACE_SEC = 10;
+
+/**
+ * Upper bound on the lifetime of an access token issued inside the grace
+ * window. It limits what a replayed (possibly stolen) token can obtain; a
+ * legitimate loser only needs it until its next renewal.
+ */
+export const REFRESH_GRACE_ACCESS_TTL_SEC = 120;
 
 const SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const MAX_DEVICE_LABEL = 64;
@@ -108,7 +116,8 @@ async function accessFor(
 	deps: RefreshSessionDeps,
 	user: User,
 	sessionId: string,
-	absoluteExpiry: Date
+	absoluteExpiry: Date,
+	maxTtlSec: number = deps.policy.ttlSec
 ): Promise<Keycard> {
 	// Never outlive the session itself.
 	const remainingSec = Math.floor((absoluteExpiry.getTime() - deps.clock.now().getTime()) / 1000);
@@ -120,7 +129,7 @@ async function accessFor(
 			policyVersion: deps.policyVersion,
 			issuer: deps.issuer,
 			audience: deps.audience,
-			ttlSec: Math.max(1, Math.min(deps.policy.ttlSec, remainingSec)),
+			ttlSec: Math.max(1, Math.min(deps.policy.ttlSec, maxTtlSec, remainingSec)),
 		},
 		user,
 		{ sessionId }
@@ -208,7 +217,13 @@ export async function refreshSession(
 			return {
 				status: "grace",
 				sessionId: session.id,
-				access: await accessFor(deps, checked, session.id, absoluteExpiresAt),
+				access: await accessFor(
+					deps,
+					checked,
+					session.id,
+					absoluteExpiresAt,
+					REFRESH_GRACE_ACCESS_TTL_SEC
+				),
 			};
 		}
 
