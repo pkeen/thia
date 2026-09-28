@@ -9,13 +9,14 @@ Use this index to distinguish design intent, planned work, and implemented behav
 | [ADR-001: OAuth cookie transactions](decisions/001-oauth-cookie-transactions.md) | Accepted | Cookie/PKCE feature merged; see record for verification limits |
 | [ADR-002: PKCE provider requirements](decisions/002-pkce-provider-requirements.md) | Proposed blanket provider policy | PKCE implemented; policy acceptance is separate |
 | [ADR-003: Selectable session policy](decisions/003-selectable-session-policy.md) | Accepted | Delivered by Sprint 001 |
+| [ADR-004: Refresh-token rotation](decisions/004-refresh-token-rotation.md) | Accepted | Delivered by Sprint 002 |
 
 ## Sprints
 
 | Brief | Created | Status |
 | --- | --- | --- |
 | [Sprint 001: Session policy](sprints/001-session-policy.md) | 2026-09-26 | Completed 2026-09-27 |
-| [Sprint 002: Refresh-token rotation](sprints/002-refresh-token-rotation.md) | 2026-09-27 | Ready for implementation |
+| [Sprint 002: Refresh-token rotation](sprints/002-refresh-token-rotation.md) | 2026-09-27 | Completed 2026-09-27 |
 
 ## Feature documentation
 
@@ -23,7 +24,8 @@ The active demo's [README](../apps/thia-clean-builder-app/README.md) contains
 setup, OAuth and session guidance. Cross-package feature guides:
 
 - [Session policies](guides/session-policies.md): stateless vs user-validated
-  JWT sessions, sign out everywhere, and changing policy.
+  JWT sessions, refresh-token rotation and devices, sign out everywhere, and
+  changing policy.
 
 Add further guides under `docs/guides/` as features are delivered. Sprint
 briefs are not substitutes for usage guides.

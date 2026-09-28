@@ -3,4 +3,4 @@
 // them to generate migrations for this app's database.
 import { createSchema } from "@thia/adapters-drizzle";
 
-export const { userTable, accountTable, userRoleTable } = createSchema();
+export const { userTable, accountTable, userRoleTable, sessionTable } = createSchema();

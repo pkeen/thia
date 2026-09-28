@@ -59,4 +59,40 @@ describe("defineSessionPolicy", () => {
 			defineSessionPolicy({ mode: "jwt-user-validated", ttlSec })
 		).toThrow(SessionPolicyError);
 	});
+
+	describe("with refresh", () => {
+		const refresh = { idleTtlSec: 7 * 86400, absoluteTtlSec: 30 * 86400 };
+
+		it("accepts and freezes a refresh policy", () => {
+			const policy = defineSessionPolicy({ mode: "jwt-user-validated", ttlSec: 600, refresh });
+			expect(policy).toEqual({ mode: "jwt-user-validated", ttlSec: 600, refresh });
+			expect(Object.isFrozen(policy.refresh)).toBe(true);
+		});
+
+		it("works with stateless mode too", () => {
+			expect(defineSessionPolicy({ mode: "jwt-stateless", ttlSec: 600, refresh }).refresh).toEqual(refresh);
+		});
+
+		it("leaves refresh out when not configured", () => {
+			expect("refresh" in defineSessionPolicy({ mode: "jwt-stateless", ttlSec: 600 })).toBe(false);
+		});
+
+		it.each([
+			["an access TTL over an hour", { ttlSec: 3601, refresh }],
+			["a non-object refresh", { ttlSec: 600, refresh: true }],
+			["a null refresh", { ttlSec: 600, refresh: null }],
+			["an array refresh", { ttlSec: 600, refresh: [] }],
+			["an unknown setting", { ttlSec: 600, refresh: { ...refresh, rotate: false } }],
+			["an idle TTL under an hour", { ttlSec: 600, refresh: { ...refresh, idleTtlSec: 3599 } }],
+			["an idle TTL over 30 days", { ttlSec: 600, refresh: { idleTtlSec: 31 * 86400, absoluteTtlSec: 60 * 86400 } }],
+			["an absolute TTL over 90 days", { ttlSec: 600, refresh: { ...refresh, absoluteTtlSec: 91 * 86400 } }],
+			["absolute shorter than idle", { ttlSec: 600, refresh: { idleTtlSec: 86400 * 2, absoluteTtlSec: 86400 } }],
+			["a fractional idle TTL", { ttlSec: 600, refresh: { ...refresh, idleTtlSec: 3600.5 } }],
+			["a missing absolute TTL", { ttlSec: 600, refresh: { idleTtlSec: 3600 } }],
+		])("rejects %s", (_label, input) => {
+			expect(() => defineSessionPolicy({ mode: "jwt-user-validated", ...input })).toThrow(
+				SessionPolicyError
+			);
+		});
+	});
 });

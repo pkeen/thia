@@ -8,6 +8,7 @@
 export { PostgresUserRepository } from "./user-repository";
 export { DrizzlePgUoW } from "./uow";
 export { PostgresRoleStore } from "./role-store";
+export { PostgresSessionRepository } from "./session-repository";
 export { createSchema } from "./schema";
 export type {
 	DefaultPostgresSchema,
@@ -17,5 +18,7 @@ export type {
 	AccountRow,
 	UserRoleTable,
 	UserRoleRow,
+	SessionTable,
+	SessionRow,
 } from "./schema";
 export type { SqlFlavorOptions, DefaultSchema } from "./utils";

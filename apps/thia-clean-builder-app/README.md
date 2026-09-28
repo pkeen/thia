@@ -22,7 +22,10 @@ pnpm --filter thia-clean-builder-app dev   # http://localhost:3000
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From a Google OAuth client of type "Web application". |
 | `GOOGLE_REDIRECT_URI` | e.g. `http://localhost:3000/api/thia/redirect/google`. |
 | `THIA_SESSION_MODE` | Optional. `jwt-user-validated` (default) or `jwt-stateless`. See [Sessions](#sessions). |
-| `THIA_SESSION_TTL_SEC` | Optional. Session lifetime in whole seconds, 60–86400 (default 1800). |
+| `THIA_SESSION_REFRESH` | Optional. `on` (default) or `off`: stored per-device sessions with rotating refresh tokens. |
+| `THIA_SESSION_TTL_SEC` | Optional. Access-token lifetime in whole seconds: 60–3600 with refresh (default 600), 60–86400 without (default 1800). |
+| `THIA_SESSION_REFRESH_IDLE_SEC` | Optional. A session ends if unused this long: 3600–2592000 (default 604800, 7 days). |
+| `THIA_SESSION_REFRESH_ABSOLUTE_SEC` | Optional. A session ends this long after sign-in: idle–7776000 (default 2592000, 30 days). |
 
 Provider callback configuration must match exactly:
 
@@ -47,10 +50,18 @@ login started under the old secret (the user just starts again).
 ## Sessions
 
 After login the app sets an HttpOnly, SameSite=Lax `thia_session` cookie
-holding a signed JWT. The cookie and the token expire at the same time,
-after `THIA_SESSION_TTL_SEC` (30 minutes by default). Every page and API
-route checks it through the same core validator
-(`current-session.ts` → `thia.validateSession`).
+holding a signed JWT access token. The cookie and the token expire together,
+after `THIA_SESSION_TTL_SEC`. Every page and API route checks it through the
+same core validator (`current-session.ts` → `thia.validateSession`).
+
+**Refresh (on by default).** Login also creates a stored session (one per
+device) and sets a `thia_refresh` cookie (`__Host-thia_refresh` in
+production). When the access token is about to expire, `proxy.ts` rotates
+the refresh token before the page runs, so users stay signed in for up to
+7 idle / 30 total days. `/thia/devices` lists sessions with per-device
+sign-out. Refresh needs the `thia.session` table: run this app's migrations
+(`drizzle/migrations/0002_sessions.sql`) before enabling it. Set
+`THIA_SESSION_REFRESH=off` for the previous behavior.
 
 - **`jwt-user-validated`** (default): each request also loads the user and
   checks the token's version against the database. Deleted users and
@@ -62,8 +73,9 @@ route checks it through the same core validator
 In both modes, roles are read from the database on every authorization check.
 If the database is unavailable, APIs return 503 and pages show the error page,
 never a signed-out page or a default role. **Sign out of this browser** only
-removes this browser's cookie. **Sign out everywhere** invalidates every
-session for the account, but not the GitHub or Google session. Invalid values
+ends this browser's session (with refresh, it also revokes it on the
+server). **Sign out everywhere** invalidates every session for the account,
+but not the GitHub or Google session. Invalid values
 stop the app at startup. See the
 [session policies guide](../../docs/guides/session-policies.md) for the full
 comparison, CSRF handling and what happens to existing tokens when you change
@@ -158,6 +170,10 @@ credentials configured:
 8. **Sign out everywhere** (default policy): sign in on two browsers, click
    *Sign out everywhere* in one → it lands on `/?signed_out=everywhere`, and
    the other browser is signed out on its next request. Signing in again works.
+9. **Refresh** (default policy): sign in, then wait more than 10 minutes, or
+   set `THIA_SESSION_TTL_SEC=60` and wait a minute, and reload → still signed
+   in, and in devtools both cookies have changed. On `/thia/devices`, sign
+   another browser out → that browser is signed out on its next request.
 
 ## Tests
 

@@ -6,3 +6,5 @@ export * from "./oauth/transaction";
 export * from "./session/session-policy";
 export * from "./session/errors";
 export * from "./session/validate-session";
+export * from "./session/session-repository.port";
+export * from "./session/refresh-sessions";

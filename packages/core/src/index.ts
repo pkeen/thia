@@ -6,6 +6,8 @@ export * from "./infra/id/ulid-id-generator";
 export * from "./infra/password/naive-hasher";
 export * from "./infra/jwt/dev-signer";
 export * from "./infra/jwt/hmac-signer";
+export * from "./infra/session/hmac-refresh-token-crypto";
+export * from "./infra/memory/in-memory-session-repo";
 export * from "./infra/memory/in-memory-user-repo";
 export * from "./infra/memory/in-memory-uow";
 export * from "./infra/oauth-transaction/jose-transaction-sealer";

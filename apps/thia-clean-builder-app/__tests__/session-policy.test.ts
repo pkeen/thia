@@ -105,7 +105,10 @@ describe("configuration", () => {
 
 	it("treats blank settings as unset", async () => {
 		const { sessionPolicyFromEnv } = await vi.importActual<typeof import("@/thia")>("@/thia");
-		expect(sessionPolicyFromEnv({ THIA_SESSION_MODE: "", THIA_SESSION_TTL_SEC: "" })).toEqual({
+		// Refresh off: the Sprint 001 defaults (refresh defaults are covered in refresh.test.ts).
+		expect(
+			sessionPolicyFromEnv({ THIA_SESSION_MODE: "", THIA_SESSION_TTL_SEC: "", THIA_SESSION_REFRESH: "off" })
+		).toEqual({
 			mode: "jwt-user-validated",
 			ttlSec: 1800,
 		});

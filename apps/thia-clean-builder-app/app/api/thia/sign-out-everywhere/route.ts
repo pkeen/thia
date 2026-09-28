@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { thia } from "@/thia";
-import { clearSessionCookie } from "@/session";
+import { clearAuthCookies, clearSessionCookie } from "@/session";
 import { describeAuthError } from "@/auth-errors";
 import { isSameOriginRequest } from "@/same-origin";
 import { AuthUnavailableError, getCurrentSession } from "@/current-session";
@@ -50,7 +50,9 @@ export async function POST(req: Request) {
 				303
 			);
 			response.headers.set("Cache-Control", "no-store");
-			clearSessionCookie(response);
+			// With refresh, every stored session was revoked too.
+			if (result.sessions) clearAuthCookies(response);
+			else clearSessionCookie(response);
 			return response;
 		}
 	}
