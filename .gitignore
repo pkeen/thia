@@ -33,6 +33,9 @@ out/
 # VSCode
 .vscode/
 
+# Local Claude settings and worktrees
+/.claude/
+
 # IntelliJ
 .idea/
 

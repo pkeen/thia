@@ -17,6 +17,7 @@ Use this index to distinguish design intent, planned work, and implemented behav
 | --- | --- | --- |
 | [Sprint 001: Session policy](sprints/001-session-policy.md) | 2026-09-26 | Completed 2026-09-27 |
 | [Sprint 002: Refresh-token rotation](sprints/002-refresh-token-rotation.md) | 2026-09-27 | Completed 2026-09-27 |
+| [Sprint 003: Sensitive-action re-authentication](sprints/003-sensitive-action-reauthentication.md) | 2026-10-25 | Draft; design choices open |
 
 ## Feature documentation
 
@@ -40,7 +41,8 @@ briefs are not substitutes for usage guides.
 - Decisions record creation date and Proposed, Accepted, or Superseded status.
   Track implementation separately. Link superseded records to their replacements.
 - Sprints record creation date, status, and completion date when completed.
-  Use Ready for implementation, In progress, Completed, or Cancelled.
+  Use Draft while design choices are open, then Ready for implementation,
+  In progress, Completed, or Cancelled as appropriate.
 - On sprint completion, record delivered scope, verification, and deferred work,
   then update feature guides and this index. Do not leave completed work labelled
   as a future task.

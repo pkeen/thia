@@ -258,15 +258,19 @@ and a background cleanup scheduler.
 
 ## Delivery record
 
-Completed 2026-09-27 (not yet committed). Decision:
+Delivery recorded as completed 2026-09-27, committed as `fe9fe82` on
+2026-09-28. The grace-window hardening in `608b958` was merged to `main` by
+`1725e6e` on 2026-09-28. Decision:
 [ADR-004](../decisions/004-refresh-token-rotation.md). Guide:
 [Session policies](../guides/session-policies.md).
 
 ### Decisions taken (confirmed with the developer, recorded in ADR-004)
 
-- Concurrent refresh: a 30-second grace window in which the just-replaced
-  secret gets an access token only, never a new refresh token, and nothing is
-  revoked. Reuse after the window revokes the session.
+- Concurrent refresh: the initial delivery used a 30-second grace window in
+  which the just-replaced secret got an access token only, never a new refresh
+  token, and nothing was revoked. The 2026-09-28 hardening reduced the window
+  to 10 seconds and capped that access token at 120 seconds. Reuse after the
+  current window revokes the session. See [ADR-004](../decisions/004-refresh-token-rotation.md).
 - Tokens without `sid` (`ver` 1) stay valid until they expire after refresh is
   enabled.
 - Lowering the refresh limits caps existing sessions (applied at validation,
@@ -334,8 +338,11 @@ changed. No Sprint 001 assertion changed.
 
 These tests use in-process fake providers and do not verify live providers.
 
-**Live local check** (developer's `next dev` with `THIA_SESSION_TTL_SEC=120`,
-Neon database, real GitHub login by the developer):
+**Live local check of the initial 30-second implementation** (developer's
+`next dev` with `THIA_SESSION_TTL_SEC=120`, Neon database, real GitHub login by
+the developer). This check preceded the 2026-09-28 hardening; the 10-second
+window and 120-second grace-token cap were covered by automated tests, not a
+repeat of this live check:
 
 - Applied `0002_sessions` to Neon with `drizzle-kit migrate` (only that
   migration ran; it adds a table).
