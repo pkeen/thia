@@ -29,6 +29,12 @@ import {
 	listUserSessions,
 	revokeUserSession,
 	deleteEndedSessions,
+	JoseReauthProofCodec,
+	REAUTH_MAX_AGE_SEC,
+	createRecentAuthentication,
+	beginReauthentication,
+	completeReauthentication,
+	type RecentAuthentication,
 } from "@thia/core";
 import type { RoleStore } from "@thia/authz";
 import {
@@ -93,6 +99,19 @@ export function sessionPolicyFromEnv(
 			absoluteTtlSec: seconds(env.THIA_SESSION_REFRESH_ABSOLUTE_SEC, defaults.absoluteTtlSec),
 		},
 	});
+}
+
+/**
+ * Recent-authentication guard switch (ADR-005). "on" (the default) requires
+ * the jwt-user-validated mode with refresh and throws at startup otherwise;
+ * "off" leaves the guard out, and the app keeps any supported session policy.
+ */
+export function reauthEnabledFromEnv(env: Record<string, string | undefined>): boolean {
+	const value = env.THIA_REAUTH || "on";
+	if (value !== "on" && value !== "off") {
+		throw new SessionPolicyError('THIA_REAUTH must be "on" or "off"');
+	}
+	return value === "on";
 }
 
 export type ThiaOptions = {
@@ -201,6 +220,18 @@ export function createThia(options: ThiaOptions = {}) {
 		}),
 	});
 
+	// The sensitive-action guard. Enabling it under a policy it doesn't
+	// support throws ReauthConfigurationError here, so the app (and its build)
+	// fails rather than silently skipping the check.
+	const recentAuth: RecentAuthentication | undefined = reauthEnabledFromEnv(env)
+		? createRecentAuthentication({
+				policy: sessionPolicy,
+				sessions: sessionStore,
+				proofs: new JoseReauthProofCodec(authSecret, { maxLifetimeSec: REAUTH_MAX_AGE_SEC }),
+				clock,
+			})
+		: undefined;
+
 	// Role assignments live in Postgres; reads aren't cached, so granting or
 	// revoking a role takes effect on the user's next request.
 	const roleStore = options.roleStore ?? PostgresRoleStore(db);
@@ -214,6 +245,8 @@ export function createThia(options: ThiaOptions = {}) {
 		roleStore,
 		redirectUriFor,
 		sessionPolicy,
+		/** Whether sensitive-action re-authentication is enabled for this app. */
+		reauthEnabled: recentAuth !== undefined,
 
 		/**
 		 * Starts a login: returns the provider URL and the transaction sealed
@@ -266,6 +299,56 @@ export function createThia(options: ThiaOptions = {}) {
 				},
 				{ provider, code, state, transaction }
 			);
+		},
+
+		/**
+		 * Starts a re-authentication for the signed-in session: a separate
+		 * provider visit whose transaction is bound to this user and device
+		 * session. The callback URI is always the configured one.
+		 */
+		async beginReauth(provider: string, session: AuthenticatedSession, returnTo?: string) {
+			if (!recentAuth) throw new Error("REAUTH_DISABLED");
+			const redirectUri = redirectUriFor(provider);
+			if (!redirectUri) throw new Error("PROVIDER_NOT_FOUND");
+			const { authorizationUrl, transaction } = await beginReauthentication(
+				{ registry, clock, ttlSec: OAUTH_TRANSACTION_TTL_SEC },
+				{ provider, redirectUri, returnTo, session }
+			);
+			return {
+				authorizationUrl,
+				transaction,
+				sealedTransaction: await sealer.seal(transaction),
+			};
+		},
+
+		/**
+		 * Finishes a re-authentication: re-validates the current session, checks
+		 * the provider account is already linked to it and issues the proof.
+		 * Never signs anyone in.
+		 */
+		async completeReauth(
+			provider: string,
+			code: string,
+			state: string,
+			transaction: OAuthTransaction | undefined,
+			sessionToken: string | null | undefined
+		) {
+			if (!recentAuth) throw new Error("REAUTH_DISABLED");
+			return completeReauthentication(
+				{ registry, users: uow.users, clock, validator: sessions, recentAuth },
+				{ provider, code, state, transaction, sessionToken }
+			);
+		},
+
+		/** The sensitive-action check; see `requireRecentAuthentication`. */
+		async checkRecentAuthentication(
+			session: AuthenticatedSession,
+			proof: string | null | undefined
+		) {
+			if (!recentAuth) {
+				return { status: "unavailable", reason: "unsupported_configuration" } as const;
+			}
+			return recentAuth.check(session, proof);
 		},
 
 		/** Rotates a refresh token (ADR-004). Storage errors propagate. */

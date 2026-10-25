@@ -26,6 +26,7 @@ pnpm --filter thia-clean-builder-app dev   # http://localhost:3000
 | `THIA_SESSION_TTL_SEC` | Optional. Access-token lifetime in whole seconds: 60–3600 with refresh (default 600), 60–86400 without (default 1800). |
 | `THIA_SESSION_REFRESH_IDLE_SEC` | Optional. A session ends if unused this long: 3600–2592000 (default 604800, 7 days). |
 | `THIA_SESSION_REFRESH_ABSOLUTE_SEC` | Optional. A session ends this long after sign-in: idle–7776000 (default 2592000, 30 days). |
+| `THIA_REAUTH` | Optional. `on` (default) or `off`: the sensitive-action re-authentication guard (see [Re-authentication](#re-authentication-for-sensitive-actions)). `on` **fails at startup and in `next build`** unless the session policy is `jwt-user-validated` with refresh on; set `off` for stateless or refresh-off setups. |
 
 Provider callback configuration must match exactly:
 
@@ -80,6 +81,41 @@ stop the app at startup. See the
 [session policies guide](../../docs/guides/session-policies.md) for the full
 comparison, CSRF handling and what happens to existing tokens when you change
 the policy.
+
+## Re-authentication for sensitive actions
+
+Some actions are worth an extra check on top of a valid session (ADR-005,
+[guide](../../docs/guides/sensitive-action-reauthentication.md)). The demo
+protects one, changing your display name on `/thia/profile`:
+
+1. Submitting the form with no recent proof changes nothing and returns you to
+   the page with a prompt (a browser form post gets a 303; other callers get a
+   403 `reauthentication_required`).
+2. *Confirm with GitHub/Google* sends you to the provider you signed in with.
+   It may show an account chooser or send you straight back; that is the
+   provider's choice. Thia checks that the provider account is **already
+   linked** to you in the same device session. It never creates a user, links
+   by email or switches sessions, and it stores no provider tokens.
+3. You return to the page with a signed proof cookie (`thia_reauth`, HttpOnly,
+   at most 10 minutes). Submitting the form again, deliberately, saves the
+   name. A saved POST is never replayed.
+
+This is a recent *same-account confirmation*, not a new password, passkey or
+second factor. The proof is reusable within its 10 minutes and is not single
+use. A refresh, a new access token or an ordinary login never creates or
+extends it, and sign-out, a revoked session or sign out everywhere ends it.
+Only `jwt-user-validated` with refresh is supported (`THIA_REAUTH=on`);
+`THIA_REAUTH=off` removes the name change rather than leaving it unguarded.
+
+In your own routes:
+
+```ts
+const session = await requireSession(request);                // any private action
+await requireRecentAuthentication(session, request);          // add for a sensitive one
+```
+
+See `require-auth.ts`; both end the request by throwing an `AuthStop` whose
+`response` the route returns (`stopResponse(e)`).
 
 ## How OAuth login works
 
@@ -174,11 +210,20 @@ credentials configured:
    set `THIA_SESSION_TTL_SEC=60` and wait a minute, and reload → still signed
    in, and in devtools both cookies have changed. On `/thia/devices`, sign
    another browser out → that browser is signed out on its next request.
+10. **Re-authentication** (default policy; both providers, ideally once with
+    the provider already signed in in this browser and once in a private
+    window): on `/thia/profile`, submit a new name → prompted, name
+    unchanged. Click *Confirm with …* → note and record exactly which provider
+    screens appear (chooser, password, none), then confirm you land back on
+    the page with "Confirmed" and the name still unchanged. Submit the name
+    again → saved. Also check: cancelling at the provider; signing in to the
+    provider with a different account → "wasn't the account you signed in
+    with"; waiting 10+ minutes → asked again; sign out → `thia_reauth` gone.
 
 ## Tests
 
 ```bash
 pnpm --filter @thia/core test              # PKCE, sealer, use cases, providers
-pnpm --filter thia-clean-builder-app test  # routes end to end, mocked providers; session policies
+pnpm --filter thia-clean-builder-app test  # routes end to end, mocked providers; session policies; re-authentication
 pnpm --filter @thia/adapters-drizzle test  # needs Docker: Postgres repos, token-version concurrency
 ```

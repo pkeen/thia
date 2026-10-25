@@ -65,9 +65,11 @@ export const ENV = {
 	// Sprint 001 suites run with refresh off, as before it existed; refresh
 	// tests turn it on explicitly (the demo's own default is on).
 	THIA_SESSION_REFRESH: "off",
+	// The guard needs refresh; suites that don't use it run without (ADR-005).
+	THIA_REAUTH: "off",
 };
 /** Refresh on, with the demo's default lifetimes. */
-export const REFRESH_ON = { THIA_SESSION_REFRESH: "on" };
+export const REFRESH_ON = { THIA_SESSION_REFRESH: "on", THIA_REAUTH: "on" };
 export const APP = "http://localhost:3000";
 
 /**
@@ -78,6 +80,7 @@ export const APP = "http://localhost:3000";
 export async function bootApp(env: Record<string, string> = {}) {
 	vi.resetModules();
 	// Optional settings from an earlier boot mustn't leak into this one.
+	delete process.env.THIA_REAUTH;
 	delete process.env.THIA_SESSION_MODE;
 	delete process.env.THIA_SESSION_TTL_SEC;
 	delete process.env.THIA_SESSION_REFRESH_IDLE_SEC;
@@ -116,6 +119,9 @@ export async function bootApp(env: Record<string, string> = {}) {
 	const refreshRoute = await import("@/app/api/thia/refresh/route");
 	const revokeRoute = await import("@/app/api/thia/sessions/revoke/route");
 	const proxyModule = await import("@/proxy");
+	const reauthRoute = await import("@/app/api/thia/reauth/[provider]/route");
+	const nameRoute = await import("@/app/api/thia/profile/name/route");
+	const profile = await import("@/app/thia/profile/page");
 	const admin = await import("@/app/thia/admin/page");
 	const authz = await import("@/authz");
 	expect(shared.instancesCreated).toBe(before + 1);
@@ -125,8 +131,10 @@ export async function bootApp(env: Record<string, string> = {}) {
 		authz,
 		login: (provider: string, browser: Browser, query = "") =>
 			login.GET(browser.request(`${APP}/api/thia/login/${provider}${query}`), params(provider)),
-		callback: (provider: string, browser: Browser, query: string) =>
-			callback.GET(browser.request(`${APP}/api/thia/redirect/${provider}?${query}`), params(provider)),
+		callback: (provider: string, browser: Browser, query: string) => {
+			actAs(browser);
+			return callback.GET(browser.request(`${APP}/api/thia/redirect/${provider}?${query}`), params(provider));
+		},
 		me: (browser: Browser) => {
 			actAs(browser);
 			return me.GET();
@@ -211,6 +219,52 @@ export async function bootApp(env: Record<string, string> = {}) {
 					body: new URLSearchParams({ session: sessionId }).toString(),
 				})
 			);
+		},
+		/** Starts a re-authentication as a form post from the profile page. */
+		reauth: (
+			provider: string,
+			browser: Browser,
+			init: { headers?: Record<string, string>; returnTo?: string } = {}
+		) => {
+			actAs(browser);
+			return reauthRoute.POST(
+				browser.request(`${APP}/api/thia/reauth/${provider}`, {
+					method: "POST",
+					headers: {
+						origin: APP,
+						"content-type": "application/x-www-form-urlencoded",
+						...init.headers,
+					},
+					body: new URLSearchParams({ returnTo: init.returnTo ?? "/thia/profile" }).toString(),
+				}),
+				params(provider)
+			);
+		},
+		/** The sensitive action: a display-name change as a browser form post. */
+		changeName: (
+			browser: Browser,
+			name: string,
+			headers: Record<string, string> = { origin: APP, accept: "text/html" }
+		) => {
+			actAs(browser);
+			return nameRoute.POST(
+				browser.request(`${APP}/api/thia/profile/name`, {
+					method: "POST",
+					headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+					body: new URLSearchParams({ name }).toString(),
+				})
+			);
+		},
+		profilePage: async (browser: Browser, searchParams: Record<string, string> = {}) => {
+			actAs(browser);
+			try {
+				return renderToStaticMarkup(
+					await profile.default({ searchParams: Promise.resolve(searchParams) })
+				);
+			} catch (e) {
+				if ((e as { digest?: string }).digest === "NEXT_HTTP_ERROR_FALLBACK;401") return 401 as const;
+				throw e;
+			}
 		},
 		/** The admin page's HTML, or the 401/403 status it interrupted with. */
 		admin: async (browser: Browser): Promise<string | 401 | 403> => {

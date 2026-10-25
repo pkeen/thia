@@ -10,6 +10,7 @@ Use this index to distinguish design intent, planned work, and implemented behav
 | [ADR-002: PKCE provider requirements](decisions/002-pkce-provider-requirements.md) | Proposed blanket provider policy | PKCE implemented; policy acceptance is separate |
 | [ADR-003: Selectable session policy](decisions/003-selectable-session-policy.md) | Accepted | Delivered by Sprint 001 |
 | [ADR-004: Refresh-token rotation](decisions/004-refresh-token-rotation.md) | Accepted | Delivered by Sprint 002 |
+| [ADR-005: Sensitive-action provider confirmation](decisions/005-sensitive-action-provider-confirmation.md) | Accepted | Delivered by Sprint 003 |
 
 ## Sprints
 
@@ -17,7 +18,7 @@ Use this index to distinguish design intent, planned work, and implemented behav
 | --- | --- | --- |
 | [Sprint 001: Session policy](sprints/001-session-policy.md) | 2026-09-26 | Completed 2026-09-27 |
 | [Sprint 002: Refresh-token rotation](sprints/002-refresh-token-rotation.md) | 2026-09-27 | Completed 2026-09-27 |
-| [Sprint 003: Sensitive-action re-authentication](sprints/003-sensitive-action-reauthentication.md) | 2026-10-25 | Draft; design choices open |
+| [Sprint 003: Sensitive-action re-authentication](sprints/003-sensitive-action-reauthentication.md) | 2026-10-25 | Completed 2026-10-25 |
 
 ## Feature documentation
 
@@ -27,6 +28,9 @@ setup, OAuth and session guidance. Cross-package feature guides:
 - [Session policies](guides/session-policies.md): stateless vs user-validated
   JWT sessions, refresh-token rotation and devices, sign out everywhere, and
   changing policy.
+
+- [Sensitive-action re-authentication](guides/sensitive-action-reauthentication.md):
+  guarding selected actions with a recent linked-provider confirmation.
 
 Add further guides under `docs/guides/` as features are delivered. Sprint
 briefs are not substitutes for usage guides.

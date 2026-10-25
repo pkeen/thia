@@ -51,10 +51,38 @@ export function clearRefreshCookie(response: NextResponse) {
 	response.cookies.set(REFRESH_COOKIE_NAME, "", { ...refreshCookieAttributes(), maxAge: 0 });
 }
 
-/** Clears the access (session) cookie and, if present, the refresh cookie. */
+/**
+ * The recent-authentication proof (ADR-005): a short-lived signed value bound
+ * to one user and device session. It expires with the proof (at most 10
+ * minutes), and is cleared on sign-out; the guard rejects it anyway once the
+ * session ends.
+ */
+export const REAUTH_COOKIE_NAME =
+	process.env.NODE_ENV === "production" ? "__Host-thia_reauth" : "thia_reauth";
+
+const reauthCookieAttributes = () => ({
+	httpOnly: true,
+	secure: process.env.NODE_ENV === "production",
+	sameSite: "lax" as const,
+	path: "/",
+});
+
+export function setReauthCookie(response: NextResponse, proof: { value: string; expiresAt: Date }) {
+	response.cookies.set(REAUTH_COOKIE_NAME, proof.value, {
+		...reauthCookieAttributes(),
+		expires: proof.expiresAt,
+	});
+}
+
+export function clearReauthCookie(response: NextResponse) {
+	response.cookies.set(REAUTH_COOKIE_NAME, "", { ...reauthCookieAttributes(), maxAge: 0 });
+}
+
+/** Clears the access (session) cookie and, if present, the refresh and re-auth cookies. */
 export function clearAuthCookies(response: NextResponse) {
 	clearSessionCookie(response);
 	clearRefreshCookie(response);
+	clearReauthCookie(response);
 }
 
 export async function getRefreshToken(): Promise<string | undefined> {

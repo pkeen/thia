@@ -51,6 +51,7 @@ export default async function Home({
 					</p>
 					{canViewAdmin && <a href="/thia/admin">Admin</a>}
 					{refresh && <a href="/thia/devices">Your devices</a>}
+					{thia.reauthEnabled && <a href="/thia/profile">Your profile</a>}
 
 					<form action="/api/thia/logout" method="post">
 						<button type="submit">Sign out of this browser</button>

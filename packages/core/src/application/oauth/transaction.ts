@@ -1,6 +1,7 @@
 // application/oauth/transaction.ts
 import { z } from "zod";
-import { OAuthTransaction } from "../ports/oauth-transaction-port";
+import { OAuthIntent, OAuthTransaction } from "../ports/oauth-transaction-port";
+import { SESSION_ID_PATTERN } from "../claims/auth-claims";
 import { CODE_VERIFIER_PATTERN, timingSafeEqual } from "./pkce";
 
 /** Transactions live 10 minutes unless configured otherwise. */
@@ -15,12 +16,27 @@ export const OAuthTransactionSchema = z
 		redirectUri: z.string().url().max(2048),
 		codeVerifier: z.string().regex(CODE_VERIFIER_PATTERN),
 		nonce: token.optional(),
+		intent: z.enum(["login", "reauth"]).optional(),
+		reauth: z
+			.object({
+				userId: z.string().min(1).max(64),
+				sessionId: z.string().regex(SESSION_ID_PATTERN),
+			})
+			.strict()
+			.optional(),
 		returnTo: z.string().max(2048).optional(),
 		issuedAt: z.number().int().nonnegative(),
 		expiresAt: z.number().int().positive(),
 	})
 	.strict()
-	.refine((t) => t.expiresAt > t.issuedAt, "expiresAt must follow issuedAt");
+	.refine((t) => t.expiresAt > t.issuedAt, "expiresAt must follow issuedAt")
+	.refine(
+		(t) => (t.intent === "reauth") === (t.reauth !== undefined),
+		"a re-authentication binding is required exactly for the reauth intent"
+	);
+
+/** A transaction without an explicit intent is an ordinary login. */
+export const intentOf = (t: Pick<OAuthTransaction, "intent">): OAuthIntent => t.intent ?? "login";
 
 /** A structurally valid transaction, or undefined. */
 export function parseOAuthTransaction(value: unknown): OAuthTransaction | undefined {
@@ -36,7 +52,7 @@ export function parseOAuthTransaction(value: unknown): OAuthTransaction | undefi
  */
 export function oauthTransactionMatches(
 	transaction: OAuthTransaction | undefined,
-	callback: { provider: string; state: string },
+	callback: { provider: string; state: string; intent?: OAuthIntent },
 	now: Date
 ): transaction is OAuthTransaction {
 	if (!parseOAuthTransaction(transaction)) return false;
@@ -44,5 +60,6 @@ export function oauthTransactionMatches(
 	if (nowSec >= transaction.expiresAt) return false;
 	if (nowSec < transaction.issuedAt - 60) return false; // issued "in the future"
 	if (transaction.providerId !== callback.provider) return false;
+	if (callback.intent !== undefined && intentOf(transaction) !== callback.intent) return false;
 	return timingSafeEqual(transaction.state, callback.state);
 }

@@ -7,3 +7,4 @@ export * from "./uow.port";
 export * from "./oauth-provider-port";
 export * from "./provider-registry-port";
 export * from "./oauth-transaction-port";
+export * from "./reauth-proof-port";

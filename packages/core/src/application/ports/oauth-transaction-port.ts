@@ -5,6 +5,15 @@
  * `beginOAuth` and handed back to `completeOAuth`. It holds secrets (the PKCE
  * verifier, the nonce), so it must only ever leave the server encrypted.
  */
+export type OAuthIntent = "login" | "reauth";
+
+/** The Thia session a re-authentication transaction was started from (ADR-005). */
+export type ReauthBinding = {
+	userId: string;
+	/** The stored device session (`sid`). */
+	sessionId: string;
+};
+
 export type OAuthTransaction = {
 	/** The `state` sent to the provider; the callback must echo it exactly. */
 	state: string;
@@ -15,6 +24,13 @@ export type OAuthTransaction = {
 	codeVerifier: string;
 	/** OIDC nonce, set for providers that issue ID tokens. */
 	nonce?: string;
+	/**
+	 * What the callback may do with this transaction. Absent means "login", so
+	 * transactions sealed before re-authentication existed stay ordinary logins.
+	 */
+	intent?: OAuthIntent;
+	/** Present exactly when `intent` is "reauth": the user and session it is bound to. */
+	reauth?: ReauthBinding;
 	/** Local path to return to after login; validated by the app. */
 	returnTo?: string;
 	issuedAt: number; // epoch seconds

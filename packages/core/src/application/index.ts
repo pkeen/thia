@@ -8,3 +8,5 @@ export * from "./session/errors";
 export * from "./session/validate-session";
 export * from "./session/session-repository.port";
 export * from "./session/refresh-sessions";
+export * from "./reauth/recent-authentication";
+export * from "./reauth/reauthenticate";

@@ -86,7 +86,7 @@ export async function completeOAuth<E = {}>(
 	// Nothing reaches the provider unless this browser holds an unexpired
 	// transaction for this provider whose state matches the callback's.
 	const transaction = input.transaction;
-	if (!oauthTransactionMatches(transaction, input, deps.clock.now())) {
+	if (!oauthTransactionMatches(transaction, { ...input, intent: "login" }, deps.clock.now())) {
 		throw new Error("INVALID_STATE");
 	}
 	if (typeof input.code !== "string" || input.code.length === 0) {

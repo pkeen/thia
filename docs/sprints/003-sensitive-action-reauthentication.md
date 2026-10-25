@@ -1,13 +1,15 @@
 # Sprint 003: Re-authentication for sensitive actions
 
-Status: Draft
+Status: Completed 2026-10-25 (live-provider checks partly run and partly waived; see the delivery record)
 Created: 2026-10-25
+Ready: 2026-10-25
 
-This is a proposed brief for review, not an accepted decision or implemented
-feature. Resolve the [design choices](#decisions-to-settle-before-implementation)
-and record an accepted ADR-005 before changing authentication behavior. The
-starting points below describe the current checkout, not promises about future
-APIs.
+The product and security choices are recorded in
+[ADR-005](../decisions/005-sensitive-action-provider-confirmation.md). This
+brief was ready for implementation on 2026-10-25. The feature is delivered
+and completed (see the delivery record, including which live-provider checks
+were run and which were waived). The
+"Starting context" below describes the checkout before this sprint.
 
 ## Outcome
 
@@ -17,10 +19,13 @@ re-authentication flow, returns to the same session, and then explicitly
 submits the action again. A normal session or a refreshed access token alone
 must not satisfy the sensitive-action check.
 
-The demo should protect one representative action to exercise the full browser
-flow. Applications mark each sensitive server action explicitly; this sprint
-must not silently change every Thia operation. Do not put a new obstacle in
-front of an account-recovery action merely to provide a demo example.
+The demo should protect a profile display-name change to exercise the full
+browser flow. This is a demonstration policy choice, not a claim that every
+app must treat display names as sensitive. The existing `User.updateProfile`
+and user repository can support it without introducing a new account domain.
+Applications mark each sensitive server action explicitly; this sprint must
+not silently change every Thia operation or obstruct an account-recovery
+action merely to provide a demo example.
 
 The first delivery targets the active demo's session setup:
 `jwt-user-validated` with refresh enabled. The re-authentication proof remains
@@ -59,7 +64,7 @@ ordinary reads unavailable to that person while their credential remains
 valid. It cannot reliably distinguish the legitimate user from an attacker
 who also has the provider's browser session and the newly issued proof.
 
-The proposed default is a **new provider visit that confirms the same linked
+The required experience is a **new provider visit that confirms the same linked
 account**. The provider may use its existing browser session, so this might
 be as simple as selecting a Google account. It must not be described as a new
 password, passkey or factor check. The provider controls which screens appear;
@@ -67,11 +72,11 @@ Thia cannot promise an account picker on every visit.
 
 Some applications may need stronger evidence that the provider authenticated
 the person recently. An OIDC `auth_time` could support that only when the
-provider supplies and enforces it. Treat that as a separate, opt-in extension
-after live-provider verification, not as the ordinary Sprint 003 experience.
+provider supplies and enforces it. Treat that as a separate future extension
+after live-provider verification, outside Sprint 003.
 An app needing that stronger check must not silently accept the simpler one.
 
-## Proposed scope
+## Scope
 
 ### Separate transaction and callback
 
@@ -101,8 +106,8 @@ An app needing that stronger check must not silently accept the simpler one.
 
 The application-facing contract should make the ordinary session check and
 the additional recent-authentication check separate and visible at the action
-that needs them. Proposed names below describe the intended shape; these
-helpers do not exist yet:
+that needs them. The following names describe the required shape; refine
+signatures to fit the code without changing these semantics:
 
 ```ts
 // An ordinary private server action:
@@ -135,17 +140,19 @@ their existing policy choices.
 - After successful callback, issue a short-lived, non-renewable proof bound
   to the current user id and stored-session id. Measure its age from this
   completed provider confirmation, without claiming that the provider
-  authenticated the person at that time. Use a separate cryptographic
-  purpose and cookie from normal access and refresh credentials; validate
-  its type, signature, audience, expiry and binding at every sensitive-action
-  guard.
+  authenticated the person at that time. Use a signed proof with a separate
+  purpose and HKDF-derived key from normal access and refresh credentials.
+  Include user id, session id, token version, issuance and expiry times.
+  Use an HttpOnly, Secure-in-production, SameSite=Lax cookie. Validate its
+  type, signature, audience, expiry and binding at every sensitive-action
+  guard. It is reusable inside the 10-minute window; no proof database table
+  or one-time consumption is required in this sprint.
 - The guard requires both a valid ordinary session and a matching recent
   proof. It checks the stored session is still active. An old access token
   with the same `sid` must not become fresh merely because a legitimate
   browser later re-authenticated.
-- Use a 10-minute maximum proof lifetime, with a shorter per-action maximum
-  where appropriate. Never extend it through normal access-token issuance or
-  refresh, and never let it outlive the stored
+- Use a 10-minute maximum proof lifetime. Never extend it through normal
+  access-token issuance or refresh, and never let it outlive the stored
   session's absolute expiry. Clear it on local or global sign-out and reject
   it after session revocation or a token-version change.
 - Return typed results for valid, missing, expired, changed session and
@@ -164,25 +171,22 @@ their existing policy choices.
   existing same-origin check. Do not replay a
   saved POST body after a redirect.
 
-## Decisions to settle before implementation
+## Implementation choices and verification boundaries
 
-1. **Session coverage (settled for this sprint):** implement the first version
-   for `jwt-user-validated` sessions with refresh on. Stateless sessions with
-   refresh still have a device record but would need an explicit database check
-   at the sensitive-action guard. Refresh-off sessions have no stored device
-   record and need a different proof binding. Both are follow-up designs.
-2. **Protected demo action:** choose a representative sensitive action that
-   is not needed for account recovery. The initial demo accepts a fresh
-   confirmation of the same linked provider account.
-3. **Proof handling:** choose the exact cookie or server-side proof format,
-   replay/consumption rules, expiry and key-rotation behaviour. A shared
-   `authenticated_at` field on a session is insufficient by itself.
-4. **Provider support:** check the actual Google and GitHub browser flows,
-   including an already signed-in provider browser, before documenting what
-   the user will see. A stronger OIDC `auth_time` mode is separate future work.
-5. **Policy limits:** the proof lasts at most 10 minutes in the same stored
-   device session. Define any shorter action-specific limit and clock
-   tolerance in ADR-005.
+- Match existing core and demo conventions when choosing concrete function
+  signatures, cookie names and error types. The first release requires one
+  10-minute maximum window; shorter action-specific policies can be added
+  later without widening the initial API.
+- The demo's display-name POST validates input, uses the authenticated user's
+  id rather than a submitted target id, performs the session and recent-proof
+  checks before saving, and retains the established same-origin check. Show
+  the current name and a form so the result is observable.
+- Check the actual Google and GitHub browser flows, including an already
+  signed-in provider browser, before documenting what the user will see.
+  Provider mocks cannot establish whether a password prompt or chooser
+  appears in a real browser.
+- The stronger OIDC `auth_time` check, Thia-owned 2FA, stateless sessions and
+  refresh-off sessions are out of scope; do not present them as supported.
 
 ## Acceptance criteria
 
@@ -200,11 +204,11 @@ their existing policy choices.
 5. Google tests retain ID-token issuer, audience and nonce checks; both
    providers' re-auth callbacks reject a different or unlinked account.
    Mocked flows are not presented as proof of live-provider behaviour.
-6. The demo's protected POST rejects cross-origin and unauthenticated
+6. The demo's display-name POST rejects cross-origin and unauthenticated
    requests; after successful re-auth it requires a deliberate second POST.
-   Cancellation and provider failure leave the original action unapplied.
-   An ordinary private action remains protected by session validation without
-   acquiring a re-authentication requirement.
+   Cancellation and provider failure leave the name unchanged. An ordinary
+   private action remains protected by session validation without acquiring
+   a re-authentication requirement.
 7. Enabling the guard with `jwt-stateless` or refresh off fails during setup
    with a clear error; it never silently skips the check. Apps that do not
    enable the guard still accept their existing supported session policies.
@@ -232,3 +236,96 @@ binding are designed explicitly.
 - [OpenID Connect Core 1.0, authentication request and `max_age`](https://openid.net/specs/openid-connect-core-1_0-18.html#AuthRequest)
 - [Google OpenID Connect guidance](https://developers.google.com/identity/openid-connect/openid-connect)
 - [GitHub OAuth app authorization](https://docs.github.com/en/apps/oauth-apps/using-oauth-apps/authorizing-oauth-apps)
+
+## Delivery record
+
+Implemented and completed 2026-10-25. The developer ran part of the
+live-provider checks and waived the rest (below); acceptance criterion 8's
+remaining items are therefore covered by automated tests only.
+
+### Delivered scope
+
+- **Core (`@thia/core`)**: `OAuthTransaction` gains `intent` (`login` default,
+  or `reauth`) and a `reauth` binding (user id and `sid`), enforced by the
+  schema; `oauthTransactionMatches` takes an `intent` and `completeOAuth`
+  insists on `login`. `beginReauthentication` / `completeReauthentication`
+  (no user creation, linking or session start; stable provider id match only;
+  session revalidated before and after the code exchange; no provider tokens
+  kept). `createRecentAuthentication` guard (throws `ReauthConfigurationError`
+  unless `jwt-user-validated` + refresh; typed `valid | missing | expired |
+  session_changed | unavailable`; fails closed) and `JoseReauthProofCodec`
+  (HS256, HKDF-derived key with its own salt/info, `typ`
+  `thia-reauth-proof+jwt`, audience `thia:reauth-proof`, 10-minute cap enforced
+  on seal and open).
+- **Demo**: `THIA_REAUTH` (default `on`; startup and `next build` fail for
+  stateless / refresh-off), `require-auth.ts` (`requireSession`,
+  `requireRecentAuthentication`, `AuthStop`), `POST /api/thia/reauth/[provider]`,
+  the existing callback dispatching on transaction intent, `thia_reauth`
+  cookie (`__Host-` in production) cleared on sign-out, sign out everywhere,
+  invalid refresh and new login, `POST /api/thia/profile/name`, `/thia/profile`.
+- No new tables, migrations or adapter changes.
+
+### Decisions made while implementing
+
+- The configured callback URI is shared with login, so the callback route
+  chooses the flow from the unsealed transaction's intent; each core use case
+  still rejects the other intent.
+- `THIA_REAUTH` defaults to `on`, so a demo configured for stateless or
+  refresh-off sessions must now set `THIA_REAUTH=off` (the existing test
+  harness does). With it off the name change returns 503 / the page hides the
+  form; it is never unguarded.
+- `requireSession` also applies the same-origin check to non-safe methods.
+- Proof lifetime is also capped by the stored session's idle expiry at
+  issuance. Idle expiry is re-checked on each guard call.
+- Proof replay: reusable within 10 minutes by design (no one-time consumption).
+  The transaction cookie is not atomically consumed; a replayed callback needs
+  the provider's single-use code and the PKCE verifier, and an unauthenticated
+  or different-session replay is refused by the session binding.
+
+### Verification (run 2026-10-25)
+
+| Check | Result |
+| --- | --- |
+| `pnpm --filter @thia/core test` (`npx vitest run` in `packages/core`) | Passed: 14 files, 285 tests (28 new in `reauthentication.test.ts`) |
+| `pnpm --filter thia-clean-builder-app test` | Passed: 8 files, 199 tests (28 new in `reauth.test.ts`); removing the guard call from the name route makes five of them fail |
+| `tsc --noEmit` in `packages/core` and the demo | Passed |
+| `pnpm --filter @thia/core build`, `pnpm --filter @thia/adapters-drizzle build`, `next build` (demo) | Passed |
+| `eslint` in the demo | Not clean: 9 errors / 4 warnings, all `no-html-link-for-pages` style on `<a href="/">` already used by existing pages; the new page follows the same pattern. Not fixed here. |
+| `pnpm --filter @thia/adapters-drizzle test` (Postgres integration, Docker) | Passed: 3 files, 35 tests (role store, session repo, user repo), run after Docker was started. No adapter or schema code changed this sprint, so these confirm the existing repos the guard relies on (`sessions.getById`, `getByProviderAccount`) still pass; no new Postgres test was added. |
+| Real Google / GitHub browser flows | **Partly run** by the developer; see "Live-provider results". The rest was waived. |
+
+### Live-provider results (developer-reported, 2026-10-25)
+
+Run by the developer in a real browser against `next dev`, with the provider
+already signed in. Reported, not independently observed or recorded:
+
+- Main flow (demo README step 10, items 1-5: no proof prompts, confirm,
+  "Confirmed" with the name unchanged, deliberate second submit saves) worked.
+- **Google** (signed in with Google, re-authenticated with Google): the usual
+  Google account chooser appeared; selecting the account returned to the site.
+  No password prompt was reported.
+- **GitHub** (re-authenticated with GitHub afterwards): nothing visible
+  appeared; the developer believes it was an automatic round trip, and
+  confirmed this by deleting the `thia_reauth` cookie and repeating, which
+  required confirmation again and again returned without a visible screen.
+  Consistent with GitHub skipping its screen for an already-authorized app
+  with a signed-in browser; GitHub documents no guarantee either way.
+
+- **Different account** (README step 7): the account-mismatch outcome
+  occurred live and the name stayed unchanged.
+- **Cancel** (step 6): could not be exercised; the provider offered no cancel
+  option in the flow the developer saw. Covered only by the mocked
+  `error=access_denied` test.
+
+**Waived by the developer on completion (not run live):** the private-window /
+signed-out-provider case for both providers (so whether a password or other
+prompt appears there is unknown and undocumented), 10-minute expiry,
+refresh-does-not-extend, sign-out clearing and the cross-browser proof copy
+(steps 8-11). Automated tests cover the logic of these with mocked providers.
+No claim is made about live behaviour for them.
+
+### Deferred (unchanged from the brief)
+
+OIDC `auth_time` / stronger assurance, Thia-owned 2FA, stateless and
+refresh-off sessions, one-time proof consumption, per-action windows,
+automatic POST replay, refresh-token reuse alerts.

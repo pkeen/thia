@@ -1,6 +1,6 @@
 import { ProviderRegistryPort } from "../ports/provider-registry-port";
 import { Clock } from "../ports/clock.port";
-import { OAuthTransaction } from "../ports/oauth-transaction-port";
+import { OAuthTransaction, ReauthBinding } from "../ports/oauth-transaction-port";
 import {
 	createCodeVerifier,
 	deriveCodeChallenge,
@@ -13,6 +13,11 @@ export type BeginOAuthInput = {
 	/** The provider's configured callback URI - never one taken from the request. */
 	redirectUri: string;
 	returnTo?: string;
+	/**
+	 * Makes this a re-authentication transaction bound to a user and stored
+	 * session instead of a login. Use `beginReauthentication`.
+	 */
+	reauth?: ReauthBinding;
 };
 
 export type BeginOAuthOutput = {
@@ -54,6 +59,9 @@ export async function beginOAuth(
 		redirectUri: input.redirectUri,
 		codeVerifier,
 		...(nonce ? { nonce } : {}),
+		...(input.reauth
+			? { intent: "reauth" as const, reauth: { ...input.reauth } }
+			: {}),
 		...(input.returnTo ? { returnTo: input.returnTo } : {}),
 		issuedAt,
 		expiresAt: issuedAt + ttlSec,

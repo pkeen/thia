@@ -14,3 +14,4 @@ export * from "./infra/oauth-transaction/jose-transaction-sealer";
 export * from "./infra/registry/simple-provider-registry";
 export * from "./infra/oath/github";
 export * from "./infra/oath/google";
+export * from "./infra/reauth/jose-reauth-proof-codec";

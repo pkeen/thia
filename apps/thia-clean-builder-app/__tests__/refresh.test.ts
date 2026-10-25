@@ -28,7 +28,8 @@ useHarness(cookieStore);
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
-const STATELESS = { ...REFRESH_ON, THIA_SESSION_MODE: "jwt-stateless" };
+// The guard does not support stateless sessions (ADR-005), so it is off here.
+const STATELESS = { ...REFRESH_ON, THIA_REAUTH: "off", THIA_SESSION_MODE: "jwt-stateless" };
 const bob: Identity = { id: "2002", email: "bob@example.com", verified: true, name: "bob" };
 
 afterEach(() => {
